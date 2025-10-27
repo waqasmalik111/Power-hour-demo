@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Add parent directory to path to import agent
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agent.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool
+from agents.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool
 
 load_dotenv()
 
