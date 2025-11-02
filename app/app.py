@@ -9,7 +9,7 @@ from datetime import datetime
 # Make sure we can import our agent logic
 # Add parent directory (repo root in the container) to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agents.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool
+from agents.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool, CodeGenTool
 
 load_dotenv()
 
@@ -55,11 +55,6 @@ def index():
     return jsonify({
         'message': 'Simple Todo API + ReAct agent service',
         'endpoints': {
-            'GET /todos': 'Get all todos',
-            'GET /todos/<id>': 'Get a specific todo',
-            'POST /todos': 'Create a new todo',
-            'PUT /todos/<id>': 'Update a todo',
-            'DELETE /todos/<id>': 'Delete a todo',
             'POST /agent/execute': 'Send natural language to the ReAct agent'
         }
     })
@@ -139,9 +134,7 @@ def execute_agent():
     # NOTE: using localhost:{PORT} is fine right now because
     # the tools run in-process alongside this API in the same container.
     tools = [
-        AddTodoTool(api_url=f"http://localhost:{PORT}"),
-        DeleteTodoTool(api_url=f"http://localhost:{PORT}"),
-        ListTodosTool(api_url=f"http://localhost:{PORT}")
+        CodeGenTool()
     ]
 
     agent = ReActAgent(tools, verbose=False)
