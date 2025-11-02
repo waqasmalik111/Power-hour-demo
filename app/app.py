@@ -9,8 +9,7 @@ from datetime import datetime
 # Make sure we can import our agent logic
 # Add parent directory (repo root in the container) to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agents.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool, CodeGenTool
-
+from agents.react_agent import ReActAgent, CodeGenTool, CodeValidateTool
 load_dotenv()
 
 app = Flask(__name__)
@@ -134,7 +133,8 @@ def execute_agent():
     # NOTE: using localhost:{PORT} is fine right now because
     # the tools run in-process alongside this API in the same container.
     tools = [
-        CodeGenTool()
+        CodeGenTool(),
+	CodeValidateTool(),
     ]
 
     agent = ReActAgent(tools, verbose=False)
@@ -152,7 +152,36 @@ def execute_agent():
             'success': False,
             'error': str(e)
         }), 500
+@app.route('/agent/validate', methods=['POST'])
+def validate_code():
+    """
+    Direct endpoint for code validation.
+    Example POST body:
+      {
+        "code": "def add(a,b): return a+b",
+        "language": "python",
+        "guidelines": "PEP8 style"
+      }
+    """
+    data = request.get_json() or {}
+    code = data.get('code', '')
+    language = data.get('language', 'python')
+    guidelines = data.get('guidelines', '')
 
+    tools = [CodeGenTool(), CodeValidateTool()]
+    agent = ReActAgent(tools, verbose=False)
+
+    try:
+        payload = {"mode": "validate", "code": code, "language": language, "guidelines": guidelines}
+        result = agent.run(payload)
+        return jsonify({
+            "success": True,
+            "answer": result["answer"],
+            "history": result["history"]
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 # ---- Main entrypoint ---------------------------------------------
 
 if __name__ == '__main__':
