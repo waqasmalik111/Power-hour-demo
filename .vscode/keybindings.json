@@ -1,0 +1,15 @@
+[
+  {
+    "key": "ctrl+alt+v",
+    "command": "workbench.action.tasks.runTask",
+    "args": "Validate Current File",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+g",
+    "command": "workbench.action.tasks.runTask",
+    "args": "Generate Code (prompt)",
+    "when": "editorTextFocus"
+  }
+]
+

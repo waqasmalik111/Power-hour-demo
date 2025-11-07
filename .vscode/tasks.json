@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Validate Current File",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "scripts/validate.sh ${env:AGENT_ROUTE} ${env:VALIDATE_LANG} '${env:VALIDATE_GUIDELINES}' '${file}'"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Generate Code (prompt)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "scripts/generate.sh ${env:AGENT_ROUTE} ${env:GEN_LANG} ${workspaceFolder}/generated \"${input:genPrompt}\""
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "genPrompt",
+      "type": "promptString",
+      "description": "Describe the code to generate",
+      "default": "Write a Python FastAPI service with one /health endpoint"
+    }
+  ]
+}
+
