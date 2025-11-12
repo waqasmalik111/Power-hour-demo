@@ -1,0 +1,51 @@
+{
+  "name": "devspaces-agent-extension",
+  "displayName": "DevSpaces Agent Commands",
+  "description": "Validate selected code and generate code using your ReAct Agent backend.",
+  "version": "0.0.1",
+  "publisher": "your-org",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "main": "extension.js",
+  "activationEvents": [
+    "onCommand:agent.validateSelection",
+    "onCommand:agent.generateCode"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Agent",
+      "properties": {
+        "agent.route": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL of your agent service (e.g. https://react-agent.apps.<cluster-domain>). If empty, the extension tries process.env.AGENT_ROUTE."
+        },
+        "agent.defaultLanguage": {
+          "type": "string",
+          "default": "python",
+          "description": "Default language to send for validation/generation."
+        }
+      }
+    },
+    "commands": [
+      { "command": "agent.validateSelection", "title": "Validate Selection with Agent" },
+      { "command": "agent.generateCode", "title": "Generate Code with Agent" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "agent.validateSelection", "when": "editorHasSelection", "group": "navigation@5" }
+      ],
+      "commandPalette": [
+        { "command": "agent.validateSelection", "when": "editorTextFocus" },
+        { "command": "agent.generateCode", "when": "editorTextFocus" }
+      ]
+    },
+    "keybindings": [
+      { "command": "agent.validateSelection", "key": "ctrl+alt+v", "when": "editorTextFocus && editorHasSelection" },
+      { "command": "agent.generateCode", "key": "ctrl+alt+g", "when": "editorTextFocus" }
+    ]
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.9"
+  }
+}
