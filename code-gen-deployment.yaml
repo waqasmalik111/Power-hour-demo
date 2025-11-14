@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-credentials
+  namespace: codegen
+type: Opaque
+stringData:
+  API_KEY: "497e336d9daf76d9b4e86d66a26d6093"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+  namespace: codegen
+data:
+  API_BASE_URL: "https://mistral-small-24b-w8a8-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1"
+  MODEL_NAME: "mistral-small-24b-w8a8"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-agent
+  namespace: codegen
+  labels:
+    app: react-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-agent
+  template:
+    metadata:
+      labels:
+        app: react-agent
+    spec:
+      containers:
+        - name: react-agent
+          image: quay.io/rh_ee_mwaqas/react-agent:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: llm-credentials
+            - configMapRef:
+                name: llm-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: react-agent
+  namespace: codegen
+spec:
+  selector:
+    app: react-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: react-agent
+  namespace: codegen
+spec:
+  to:
+    kind: Service
+    name: react-agent
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+

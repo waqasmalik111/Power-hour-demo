@@ -6,17 +6,28 @@ import os
 import sys
 from datetime import datetime
 
-# Add parent directory to path to import agent
+# Make sure we can import our agent logic
+# Add parent directory (repo root in the container) to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agent.react_agent import ReActAgent, AddTodoTool, DeleteTodoTool, ListTodosTool
-
+from agents.react_agent import ReActAgent, CodeGenTool, CodeValidateTool
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+# ---- Config / env -------------------------------------------------
+
+# Where to store todos (simple file persistence)
 TODOS_FILE = os.getenv('TODOS_FILE', 'todos.json')
-PORT = int(os.getenv('PORT', 5000))
+
+# Port we want Flask to listen on (default to 8080 for OpenShift)
+PORT = int(os.getenv('PORT', 8080))
+
+# Host we want Flask to bind to.
+# 0.0.0.0 is required so the OpenShift Service/Route can hit the pod.
+HOST = os.getenv('HOST', '0.0.0.0')
+
+# ---- Helpers for todo handling -----------------------------------
 
 def load_todos():
     if os.path.exists(TODOS_FILE):
@@ -33,21 +44,21 @@ def get_next_id(todos):
         return 1
     return max(todo['id'] for todo in todos) + 1
 
+# ---- Routes: basic info / homepage -------------------------------
+
 @app.route('/')
 def index():
     html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'index.html')
     if os.path.exists(html_path):
         return send_file(html_path)
     return jsonify({
-        'message': 'Simple Todo API',
+        'message': 'Simple Todo API + ReAct agent service',
         'endpoints': {
-            'GET /todos': 'Get all todos',
-            'GET /todos/<id>': 'Get a specific todo',
-            'POST /todos': 'Create a new todo',
-            'PUT /todos/<id>': 'Update a todo',
-            'DELETE /todos/<id>': 'Delete a todo'
+            'POST /agent/execute': 'Send natural language to the ReAct agent'
         }
     })
+
+# ---- Routes: Todo CRUD -------------------------------------------
 
 @app.route('/todos', methods=['GET'])
 def get_todos():
@@ -65,10 +76,10 @@ def get_todo(id):
 @app.route('/todos', methods=['POST'])
 def create_todo():
     data = request.get_json()
-    
+
     if not data or 'title' not in data:
         return jsonify({'error': 'Title is required'}), 400
-    
+
     todos = load_todos()
     new_todo = {
         'id': get_next_id(todos),
@@ -76,26 +87,26 @@ def create_todo():
         'completed': data.get('completed', False),
         'created_at': datetime.now().isoformat()
     }
-    
+
     todos.append(new_todo)
     save_todos(todos)
-    
+
     return jsonify(new_todo), 201
 
 @app.route('/todos/<int:id>', methods=['PUT'])
 def update_todo(id):
     todos = load_todos()
     todo = next((t for t in todos if t['id'] == id), None)
-    
+
     if not todo:
         return jsonify({'error': 'Todo not found'}), 404
-    
+
     data = request.get_json()
     if 'title' in data:
         todo['title'] = data['title']
     if 'completed' in data:
         todo['completed'] = data['completed']
-    
+
     save_todos(todos)
     return jsonify(todo)
 
@@ -106,29 +117,30 @@ def delete_todo(id):
     save_todos(todos)
     return jsonify({'message': 'Todo deleted'}), 200
 
+# ---- Routes: Agent execution -------------------------------------
+
 @app.route('/agent/execute', methods=['POST'])
 def execute_agent():
-    """Execute a ReAct agent with a given query"""
+    """Execute a ReAct agent with a given query."""
     data = request.get_json()
-    
+
     if not data or 'query' not in data:
         return jsonify({'error': 'Query is required'}), 400
-    
+
     query = data['query']
-    
-    # Initialize tools and agent
+
+    # Tools talk back to this same Flask app.
+    # NOTE: using localhost:{PORT} is fine right now because
+    # the tools run in-process alongside this API in the same container.
     tools = [
-        AddTodoTool(api_url=f"http://localhost:{PORT}"),
-        DeleteTodoTool(api_url=f"http://localhost:{PORT}"),
-        ListTodosTool(api_url=f"http://localhost:{PORT}")
+        CodeGenTool(),
+	CodeValidateTool(),
     ]
-    
+
     agent = ReActAgent(tools, verbose=False)
-    
+
     try:
-        # Run the agent
         result = agent.run(query)
-        
         return jsonify({
             'success': True,
             'query': query,
@@ -140,6 +152,42 @@ def execute_agent():
             'success': False,
             'error': str(e)
         }), 500
+@app.route('/agent/validate', methods=['POST'])
+def validate_code():
+    """
+    Direct endpoint for code validation.
+    Example POST body:
+      {
+        "code": "def add(a,b): return a+b",
+        "language": "python",
+        "guidelines": "PEP8 style"
+      }
+    """
+    data = request.get_json() or {}
+    code = data.get('code', '')
+    language = data.get('language', 'python')
+    guidelines = data.get('guidelines', '')
+
+    tools = [CodeGenTool(), CodeValidateTool()]
+    agent = ReActAgent(tools, verbose=False)
+
+    try:
+        payload = {"mode": "validate", "code": code, "language": language, "guidelines": guidelines}
+        result = agent.run(payload)
+        return jsonify({
+            "success": True,
+            "answer": result["answer"],
+            "history": result["history"]
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+# ---- Main entrypoint ---------------------------------------------
 
 if __name__ == '__main__':
-    app.run(debug=os.getenv('FLASK_DEBUG', 'True').lower() == 'true', port=PORT)
+    app.run(
+        host=HOST,  # <- critical for OpenShift Service/Route
+        port=PORT,  # <- default 8080 matches container/Service
+        debug=os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
+    )
+

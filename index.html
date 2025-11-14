@@ -1,339 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todo App with Agent Activity</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .split-screen {
-            height: 100vh;
-            overflow-y: auto;
-        }
-        .todo-item {
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .todo-item:hover {
-            background-color: #f8f9fa;
-        }
-        .todo-item.completed {
-            text-decoration: line-through;
-            opacity: 0.6;
-        }
-        .agent-log {
-            max-height: 80vh;
-            overflow-y: auto;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 15px;
-        }
-        .agent-entry {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-left: 4px solid;
-            background-color: white;
-            border-radius: 3px;
-        }
-        .agent-add {
-            border-left-color: #28a745;
-        }
-        .agent-delete {
-            border-left-color: #dc3545;
-        }
-        .agent-thought {
-            border-left-color: #6c757d;
-        }
-        .agent-observation {
-            border-left-color: #17a2b8;
-        }
-        .agent-answer {
-            border-left-color: #28a745;
-        }
-        .agent-processing {
-            border-left-color: #ffc107;
-        }
-        .agent-error {
-            border-left-color: #dc3545;
-        }
-        .agent-action {
-            border-left-color: #007bff;
-        }
-        .timestamp {
-            font-size: 0.85em;
-            color: #6c757d;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ReAct Agent Playground</title>
+
+  <style>
+    :root {
+      --bg-page: #0f172a;
+      --bg-card: #1e293b;
+      --bg-input: #0f172a;
+      --border-color: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent: #38bdf8;
+      --radius-lg: 1rem;
+      --radius-sm: 0.5rem;
+      --font-stack: system-ui, -apple-system, BlinkMacSystemFont, "Inter", Roboto, "Helvetica Neue", sans-serif;
+    }
+    body { background: var(--bg-page); color: var(--text-primary); font-family: var(--font-stack);
+      margin: 0; padding: 2rem; line-height: 1.5; display: flex; justify-content: center; }
+    .app-shell { max-width: 1200px; width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    header { grid-column: 1 / span 2; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 1rem; }
+    .title-block h1 { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: baseline; gap: 0.5rem; }
+    .title-block .tag { background: rgba(56,189,248,0.15); color: var(--accent); border: 1px solid rgba(56,189,248,0.4);
+      font-size: 0.7rem; line-height: 1; font-weight: 500; padding: 0.25rem 0.4rem; border-radius: var(--radius-sm); }
+    .subtitle { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .card { background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 30px 120px rgba(0,0,0,0.7);
+      border-radius: var(--radius-lg); padding: 1rem 1rem 0.75rem; display: flex; flex-direction: column; min-height: 300px; }
+    .card h2 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--text-primary);
+      display: flex; justify-content: space-between; align-items: center; }
+    .section-hint { font-size: 0.7rem; color: var(--text-secondary); font-weight: 400; }
+    .input-row { display: flex; flex-direction: row; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    textarea, input[type="text"], select { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 0.8rem; line-height: 1.4; font-family: inherit; flex: 1; min-width: 0; }
+    textarea { min-height: 4rem; resize: vertical; width: 100%; }
+    button { -webkit-font-smoothing: antialiased; font-family: inherit; border: 1px solid var(--accent);
+      background: rgba(56,189,248,0.1); color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0.6rem 0.8rem;
+      line-height: 1.2; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+    button:active { transform: scale(0.98); }
+    pre { background: #0f172a; color: var(--text-primary); font-size: 0.75rem; line-height: 1.4; border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm); padding: 0.75rem; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 240px; flex: 1; }
+    code { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; }
+    .history-block { background: rgba(15,23,42,0.5); border-top: 1px solid var(--border-color); margin-top: 0.75rem; padding: 0.75rem;
+      border-radius: var(--radius-sm); max-height: 150px; overflow-y: auto; font-size: 0.7rem; line-height: 1.4; color: var(--text-secondary); }
+    .todo-list { flex: 1; min-height: 140px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+      background: var(--bg-input); padding: 0.5rem 0.75rem; font-size: 0.8rem; line-height: 1.4; color: var(--text-primary); }
+    .todo-item { border-bottom: 1px solid var(--border-color); padding: 0.5rem 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+    .todo-main { flex: 1; word-break: break-word; }
+    .todo-meta { font-size: 0.65rem; color: var(--text-secondary); }
+    .todo-actions { display: flex; flex-direction: column; gap: 0.4rem; }
+    .small-btn { font-size: 0.7rem; padding: 0.4rem 0.5rem; line-height: 1.2; }
+    footer { grid-column: 1 / span 2; text-align: center; font-size: 0.7rem; color: var(--text-secondary); margin-top: 2rem; }
+    @media (max-width: 900px) { .app-shell { grid-template-columns: 1fr; } header { grid-column: 1; } footer { grid-column: 1; } }
+  </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Left Side - Todo App -->
-            <div class="col-md-6 split-screen border-end">
-                <div class="p-4">
-                    <h2 class="mb-4">📝 Todo App</h2>
-                    
-                    <!-- Add Todo Form -->
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <div class="input-group">
-                                <input type="text" id="todoInput" class="form-control" placeholder="Enter a new todo...">
-                                <button class="btn btn-primary" onclick="addTodo()">Add Todo</button>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Todo List -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Todo List</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="todoList" class="list-group">
-                                <!-- Todos will be loaded here -->
-                            </div>
-                        </div>
-                    </div>
+<div class="app-shell">
+  <header>
+    <div class="title-block">
+      <h1>
+        ReAct Agent Playground
+        <span class="tag">alpha</span>
+      </h1>
+      <div class="subtitle">
+        Ask for code, get code — and validate it.
+      </div>
+    </div>
+    <div class="subtitle">
+      Backend: Flask · <strong>/agent/execute</strong> · <strong>/agent/validate</strong> · <strong>/todos</strong>
+    </div>
+  </header>
 
-                    <!-- Stats -->
-                    <div class="mt-3">
-                        <span class="badge bg-info" id="totalCount">Total: 0</span>
-                        <span class="badge bg-success" id="completedCount">Completed: 0</span>
-                        <span class="badge bg-warning" id="pendingCount">Pending: 0</span>
-                    </div>
-                </div>
-            </div>
+  <!-- Code Generation / Agent panel -->
+  <section class="card" id="agent-card">
+    <h2>
+      Code Generator
+      <span class="section-hint">POST /agent/execute</span>
+    </h2>
 
-            <!-- Right Side - Agent Activity -->
-            <div class="col-md-6 split-screen">
-                <div class="p-4">
-                    <h2 class="mb-4">🤖 Agent Activity</h2>
-                    
-                    <!-- Agent Controls -->
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <h5 class="card-title">Agent Status</h5>
-                            <div class="row">
-                                <div class="col-6">
-                                    <div class="d-flex align-items-center">
-                                        <span class="badge bg-success me-2">●</span>
-                                        <strong>Add Agent:</strong> Active
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="d-flex align-items-center">
-                                        <span class="badge bg-danger me-2">●</span>
-                                        <strong>Delete Agent:</strong> Active
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Agent Activity Log -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Activity Log</h5>
-                            <button class="btn btn-sm btn-outline-secondary float-end" onclick="clearAgentLog()">Clear Log</button>
-                        </div>
-                        <div class="card-body agent-log" id="agentLog">
-                            <!-- Agent activities will be logged here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="input-row">
+      <textarea id="agent-query" placeholder="e.g. 'Write a Python FastAPI service with one /health endpoint'"></textarea>
+      <button id="run-agent-btn">Generate Code</button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let todos = [];
-        const API_URL = 'http://localhost:5001';
+    <label for="agent-answer" class="section-hint" style="margin-bottom:0.25rem; font-size:0.7rem;">Answer</label>
+    <pre id="agent-answer"><code>// Your generated code will appear here...</code></pre>
 
-        // Load todos on page load
-        window.onload = function() {
-            loadTodos();
-        };
+    <div class="history-block" id="agent-history">
+      <div class="section-hint" style="margin-bottom:0.25rem; color:var(--text-secondary);">Agent trace</div>
+      <div id="history-body" style="white-space:pre-wrap; word-break:break-word;"></div>
+    </div>
+  </section>
 
-        // Load todos from API
-        async function loadTodos() {
-            try {
-                const response = await fetch(`${API_URL}/todos`);
-                todos = await response.json();
-                renderTodos();
-                updateStats();
-            } catch (error) {
-                console.error('Error loading todos:', error);
-            }
+  <!-- Code Validation panel -->
+  <section class="card" id="validate-card">
+    <h2>
+      Code Validation
+      <span class="section-hint">POST /agent/validate</span>
+    </h2>
+
+    <div class="input-row" style="gap:0.5rem;">
+      <select id="validate-language" style="flex:0 0 160px;">
+        <option value="python" selected>Python</option>
+        <option value="javascript">JavaScript</option>
+        <option value="go">Go</option>
+        <option value="java">Java</option>
+        <option value="csharp">C#</option>
+      </select>
+      <input id="validate-guidelines" type="text" placeholder="Guidelines (optional): e.g. PEP8, security, performance"/>
+      <button id="run-validate-btn">Validate Code</button>
+    </div>
+
+    <div class="input-row">
+      <textarea id="validate-code" placeholder="Paste code here to validate..."></textarea>
+    </div>
+
+    <label class="section-hint" style="margin-bottom:0.25rem; font-size:0.7rem;">Validation Result</label>
+    <pre id="validate-answer"><code>// Your validation report will appear here...</code></pre>
+
+    <div class="history-block" id="validate-history">
+      <div class="section-hint" style="margin-bottom:0.25rem; color:var(--text-secondary);">Agent trace</div>
+      <div id="validate-history-body" style="white-space:pre-wrap; word-break:break-word;"></div>
+    </div>
+  </section>
+
+  <!-- Todo panel -->
+  <section class="card" id="todo-card">
+    <h2>
+      Todos
+      <span class="section-hint">/todos</span>
+    </h2>
+
+    <div class="input-row">
+      <input id="new-todo-text" type="text" placeholder="Add a new todo: 'buy milk'" />
+      <button id="add-todo-btn">Add</button>
+      <button id="refresh-todos-btn" class="small-btn">Refresh</button>
+    </div>
+
+    <div class="todo-list" id="todo-list">
+      <div class="section-hint">No todos loaded yet.</div>
+    </div>
+  </section>
+
+  <footer>
+    ReAct Agent Demo UI • Flask backend • <span style="color:var(--accent)">internal use only</span>
+  </footer>
+</div>
+
+<script>
+  // =============== Agent / Code Gen ===================
+  async function callAgent(query) {
+    const res = await fetch('/agent/execute', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || ('HTTP ' + res.status)); }
+    return res.json();
+  }
+
+  async function onRunAgent() {
+    const queryEl = document.getElementById('agent-query');
+    const answerEl = document.getElementById('agent-answer');
+    const historyBodyEl = document.getElementById('history-body');
+
+    const query = queryEl.value.trim();
+    if (!query) { answerEl.innerText = '// please enter a request first'; return; }
+
+    answerEl.innerText = '// generating...'; historyBodyEl.innerText = '';
+    try {
+      const data = await callAgent(query);
+      if (data.success) {
+        answerEl.innerText = data.answer || '// (no answer returned)';
+        historyBodyEl.innerText = JSON.stringify(data.history, null, 2);
+        // convenience: put generated code in validator input if it looks like code
+        if (data.answer && data.answer.trim().match(/[{}();=:]|def\s+\w+\(/)) {
+          document.getElementById('validate-code').value = data.answer.trim();
         }
+      } else {
+        answerEl.innerText = '// error: ' + (data.error || 'unknown');
+      }
+    } catch (e) {
+      answerEl.innerText = '// request failed: ' + e.message;
+    }
+  }
+  document.getElementById('run-agent-btn').addEventListener('click', onRunAgent);
 
-        // Render todos in the UI
-        function renderTodos() {
-            const todoList = document.getElementById('todoList');
-            todoList.innerHTML = '';
+  // =============== Code Validation ===================
+  async function callValidate({ code, language, guidelines }) {
+    const res = await fetch('/agent/validate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, language, guidelines })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || ('HTTP ' + res.status)); }
+    return res.json();
+  }
 
-            todos.forEach(todo => {
-                const todoItem = document.createElement('div');
-                todoItem.className = `list-group-item todo-item d-flex justify-content-between align-items-center ${todo.completed ? 'completed' : ''}`;
-                
-                todoItem.innerHTML = `
-                    <div class="d-flex align-items-center">
-                        <input type="checkbox" class="form-check-input me-2" 
-                               ${todo.completed ? 'checked' : ''} 
-                               onchange="toggleTodo(${todo.id})">
-                        <span>${todo.title}</span>
-                    </div>
-                    <button class="btn btn-sm btn-danger" onclick="deleteTodo(${todo.id})">Delete</button>
-                `;
-                
-                todoList.appendChild(todoItem);
-            });
-        }
+  async function onRunValidate() {
+    const codeEl = document.getElementById('validate-code');
+    const langEl = document.getElementById('validate-language');
+    const guideEl = document.getElementById('validate-guidelines');
+    const answerEl = document.getElementById('validate-answer');
+    const historyEl = document.getElementById('validate-history-body');
 
-        // Add new todo
-        async function addTodo() {
-            const input = document.getElementById('todoInput');
-            const title = input.value.trim();
-            
-            if (!title) {
-                alert('Please enter a todo title');
-                return;
-            }
+    const code = codeEl.value.trim();
+    const language = langEl.value || 'python';
+    const guidelines = guideEl.value || '';
 
-            // Execute via agent
-            executeAgent(`Add a todo: ${title}`);
-            input.value = '';
-        }
+    if (!code) { answerEl.innerText = '// please paste code to validate'; return; }
 
-        // Toggle todo completion
-        async function toggleTodo(id) {
-            const todo = todos.find(t => t.id === id);
-            if (!todo) return;
+    answerEl.innerText = '// validating...'; historyEl.innerText = '';
+    try {
+      const data = await callValidate({ code, language, guidelines });
+      if (data.success) {
+        answerEl.innerText = data.answer || '// (no validation output)';
+        historyEl.innerText = JSON.stringify(data.history, null, 2);
+      } else {
+        answerEl.innerText = '// error: ' + (data.error || 'unknown');
+      }
+    } catch (e) {
+      answerEl.innerText = '// request failed: ' + e.message;
+    }
+  }
+  document.getElementById('run-validate-btn').addEventListener('click', onRunValidate);
 
-            try {
-                await fetch(`${API_URL}/todos/${id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ completed: !todo.completed })
-                });
+  // =============== Todos ===================
+  async function fetchTodos() { const res = await fetch('/todos'); if (!res.ok) throw new Error('Failed to load todos'); return res.json(); }
+  async function addTodo(title) { const res = await fetch('/todos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title })}); if (!res.ok) throw new Error('Failed to add todo'); return res.json(); }
+  async function deleteTodo(id) { const res = await fetch(`/todos/${id}`, { method:'DELETE' }); if (!res.ok) throw new Error('Failed to delete todo'); return res.json(); }
+  async function toggleTodo(id, completed, title) { const res = await fetch(`/todos/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ completed, title })}); if (!res.ok) throw new Error('Failed to update todo'); return res.json(); }
 
-                loadTodos();
-            } catch (error) {
-                console.error('Error updating todo:', error);
-            }
-        }
+  function renderTodos(list) {
+    const container = document.getElementById('todo-list'); container.innerHTML = '';
+    if (!list || list.length === 0) { container.innerHTML = '<div class="section-hint">No todos yet.</div>'; return; }
+    list.forEach(todo => {
+      const wrapper = document.createElement('div'); wrapper.className = 'todo-item';
+      const main = document.createElement('div'); main.className = 'todo-main';
+      const title = document.createElement('div'); title.textContent = (todo.completed ? '✅ ' : '⬜ ') + todo.title;
+      const meta = document.createElement('div'); meta.className = 'todo-meta'; meta.textContent = `id=${todo.id} • created ${todo.created_at || ''}`;
+      main.appendChild(title); main.appendChild(meta);
+      const actions = document.createElement('div'); actions.className = 'todo-actions';
+      const toggleBtn = document.createElement('button'); toggleBtn.className = 'small-btn'; toggleBtn.textContent = todo.completed ? 'Mark undone' : 'Mark done';
+      toggleBtn.addEventListener('click', async () => { await toggleTodo(todo.id, !todo.completed, todo.title); await refreshTodos(); });
+      const delBtn = document.createElement('button'); delBtn.className = 'small-btn'; delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => { await deleteTodo(todo.id); await refreshTodos(); });
+      actions.appendChild(toggleBtn); actions.appendChild(delBtn);
+      wrapper.appendChild(main); wrapper.appendChild(actions);
+      container.appendChild(wrapper);
+    });
+  }
+  async function refreshTodos() { try { renderTodos(await fetchTodos()); } catch { document.getElementById('todo-list').innerHTML = '<div class="section-hint">Failed to load todos.</div>'; } }
+  async function onAddTodo() { const input = document.getElementById('new-todo-text'); const val = input.value.trim(); if (!val) return; await addTodo(val); input.value = ''; await refreshTodos(); }
+  document.getElementById('add-todo-btn').addEventListener('click', onAddTodo);
+  document.getElementById('refresh-todos-btn').addEventListener('click', refreshTodos);
+  refreshTodos();
+</script>
 
-        // Delete todo
-        async function deleteTodo(id) {
-            const todo = todos.find(t => t.id === id);
-            if (!todo) return;
-
-            if (!confirm('Are you sure you want to delete this todo?')) {
-                return;
-            }
-
-            // Execute via agent
-            executeAgent(`Delete todo with ID ${id}`);
-        }
-
-        // Update statistics
-        function updateStats() {
-            const total = todos.length;
-            const completed = todos.filter(t => t.completed).length;
-            const pending = total - completed;
-
-            document.getElementById('totalCount').textContent = `Total: ${total}`;
-            document.getElementById('completedCount').textContent = `Completed: ${completed}`;
-            document.getElementById('pendingCount').textContent = `Pending: ${pending}`;
-        }
-
-        // Log agent activity
-        function logAgentActivity(type, message) {
-            const agentLog = document.getElementById('agentLog');
-            const timestamp = new Date().toLocaleTimeString();
-            
-            const entry = document.createElement('div');
-            entry.className = `agent-entry agent-${type}`;
-            
-            entry.innerHTML = `
-                <div class="d-flex justify-content-between">
-                    <strong>${type === 'add' ? '➕ Add Agent' : '🗑️ Delete Agent'}</strong>
-                    <span class="timestamp">${timestamp}</span>
-                </div>
-                <div class="mt-2">${message}</div>
-            `;
-            
-            // Add to top of log
-            agentLog.insertBefore(entry, agentLog.firstChild);
-            
-            // Limit log entries to 50
-            while (agentLog.children.length > 50) {
-                agentLog.removeChild(agentLog.lastChild);
-            }
-        }
-
-        // Clear agent log
-        function clearAgentLog() {
-            document.getElementById('agentLog').innerHTML = '';
-        }
-
-        // Execute agent command
-        async function executeAgent(query) {
-            try {
-                // Show loading state
-                logAgentActivity('processing', `Processing: "${query}"`);
-                
-                const response = await fetch(`${API_URL}/agent/execute`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ query: query })
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Log agent history
-                    result.history.forEach(step => {
-                        if (step.type === 'thought') {
-                            logAgentActivity('thought', `💭 Thinking: ${step.content}`);
-                        } else if (step.type === 'action') {
-                            const isAdd = step.content.includes('add_todo');
-                            const isDelete = step.content.includes('delete_todo');
-                            if (isAdd) {
-                                logAgentActivity('add', `➕ Action: ${step.content}`);
-                            } else if (isDelete) {
-                                logAgentActivity('delete', `🗑️ Action: ${step.content}`);
-                            } else {
-                                logAgentActivity('action', `⚡ Action: ${step.content}`);
-                            }
-                        } else if (step.type === 'observation') {
-                            logAgentActivity('observation', `👁️ Result: ${step.content}`);
-                        } else if (step.type === 'answer') {
-                            logAgentActivity('answer', `✅ Complete: ${step.content}`);
-                        }
-                    });
-                    
-                    // Reload todos to show changes
-                    loadTodos();
-                } else {
-                    logAgentActivity('error', `❌ Error: ${result.error}`);
-                }
-            } catch (error) {
-                console.error('Error executing agent:', error);
-                logAgentActivity('error', `❌ Error: ${error.message}`);
-            }
-        }
-
-        // Allow Enter key to add todo
-        document.getElementById('todoInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                addTodo();
-            }
-        });
-    </script>
 </body>
 </html>
+

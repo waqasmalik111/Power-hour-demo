@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-orchestrator
+  namespace: telco-ai-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-orchestrator
+  template:
+    metadata:
+      labels:
+        app: agent-orchestrator
+    spec:
+      containers:
+      - name: agent-orchestrator
+        image: image-registry.openshift-image-registry.svc:5000/telco-ai-agents/agent-orchestrator
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: LLM_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: llm-credentials
+              key: LLM_ENDPOINT
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-credentials
+              key: LLM_API_KEY
+        - name: LLM_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: llm-credentials
+              key: LLM_MODEL
+        - name: FLASK_RUN_HOST
+          value: "0.0.0.0"
+        - name: PYTHONPATH
+          value: /app
+        # optional but nice: readiness probe so OpenShift knows it's healthy
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-orchestrator-svc
+  namespace: telco-ai-agents
+spec:
+  selector:
+    app: agent-orchestrator
+  ports:
+  - name: http
+    port: 8080        # cluster port
+    targetPort: 8080  # container port
+    protocol: TCP
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: agent-orchestrator-route
+  namespace: telco-ai-agents
+spec:
+  to:
+    kind: Service
+    name: agent-orchestrator-svc
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+

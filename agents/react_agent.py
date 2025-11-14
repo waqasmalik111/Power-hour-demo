@@ -1,381 +1,207 @@
-"""
-ReAct Agent Implementation with Mistral API Integration
-
-This demonstrates a ReAct (Reasoning and Acting) agent that combines
-reasoning steps with tool execution to solve problems iteratively.
-"""
-
-import re
+import os
 import json
 import urllib.request
-import urllib.error
-import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from dataclasses import dataclass
 from enum import Enum
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
+# ---------- Core types ----------
 class StepType(Enum):
     THOUGHT = "thought"
     ACTION = "action"
     OBSERVATION = "observation"
     ANSWER = "answer"
 
-
 @dataclass
 class Step:
     type: StepType
     content: str
 
-
 class Tool:
-    """Base class for tools that the agent can use"""
-    
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
-    
     def execute(self, *args, **kwargs) -> str:
         raise NotImplementedError
 
+# ---------- Prompts for codegen ----------
+CODEGEN_SYSTEM_PROMPT = (
+    "You are an expert software engineer. "
+    "Generate high-quality, production-ready code that satisfies the user's requirements. "
+    "Return ONLY code unless explicitly asked for explanation. Use clear names and docstrings when helpful."
+)
 
-class AddTodoTool(Tool):
-    """Tool for adding a new todo item"""
-    
-    def __init__(self, api_url="http://localhost:5001"):
-        super().__init__(
-            name="add_todo",
-            description="Add a new todo item. Input should be the title of the todo."
-        )
-        self.api_url = api_url
-    
-    def execute(self, title: str) -> str:
-        try:
-            url = f"{self.api_url}/todos"
-            data = json.dumps({"title": title}).encode('utf-8')
-            
-            req = urllib.request.Request(url, data=data)
-            req.add_header('Content-Type', 'application/json')
-            
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return f"Successfully added todo: '{result['title']}' with ID {result['id']}"
-        except Exception as e:
-            return f"Error adding todo: {str(e)}"
+CODEGEN_USER_PROMPT = """Generate code with the following requirements.
 
+Language: {language}
 
-class DeleteTodoTool(Tool):
-    """Tool for deleting a todo item"""
-    
-    def __init__(self, api_url="http://localhost:5001"):
-        super().__init__(
-            name="delete_todo",
-            description="Delete a todo item. Input should be the ID of the todo to delete."
-        )
-        self.api_url = api_url
-    
-    def execute(self, todo_id: str) -> str:
-        try:
-            # First, try to get the todo to confirm it exists
-            url = f"{self.api_url}/todos/{todo_id}"
-            req = urllib.request.Request(url, method='DELETE')
-            
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return f"Successfully deleted todo with ID {todo_id}"
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return f"Todo with ID {todo_id} not found"
-            return f"Error deleting todo: HTTP {e.code}"
-        except Exception as e:
-            return f"Error deleting todo: {str(e)}"
+Task:
+{task}
 
+Return the complete code implementation.
+"""
 
-class ListTodosTool(Tool):
-    """Tool for listing all todos"""
-    
-    def __init__(self, api_url="http://localhost:5001"):
-        super().__init__(
-            name="list_todos",
-            description="List all todo items. No input required."
-        )
-        self.api_url = api_url
-    
-    def execute(self, query: str = "") -> str:
-        try:
-            url = f"{self.api_url}/todos"
-            req = urllib.request.Request(url)
-            
-            with urllib.request.urlopen(req) as response:
-                todos = json.loads(response.read().decode('utf-8'))
-                
-                if not todos:
-                    return "No todos found. The list is empty."
-                
-                todo_list = []
-                for todo in todos:
-                    status = "✓" if todo.get('completed', False) else "○"
-                    todo_list.append(f"{status} [{todo['id']}] {todo['title']}")
-                
-                return "Current todos:\n" + "\n".join(todo_list)
-        except Exception as e:
-            return f"Error listing todos: {str(e)}"
-
-
+# ---------- LLM client (OpenAI/Mistral-compatible) ----------
 class MistralLLMClient:
-    """Client for Mistral API (OpenAI compatible)"""
-    
+    """
+    Generic client for OpenAI-style /v1/chat/completions endpoints.
+    Configure via env:
+      API_BASE_URL (default: your RHOAI gateway)
+      API_KEY      (required)
+      MODEL_NAME   (default: mistral-small-24b-w8a8)
+    """
     def __init__(self):
-        self.base_url = "https://mistral-llm.apps.cluster-gg696.gg696.sandbox3157.opentlc.com/v1"
-        self.api_key = os.getenv("API_KEY", "")
-        self.model = "mistral"
-    
-    def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
-        """Make a chat completion request to Mistral API"""
+        self.base_url = os.getenv(
+            "API_BASE_URL",
+            "https://mistral-small-24b-w8a8-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1",
+        ).rstrip("/")
+        self.api_key  = os.getenv("API_KEY", "")
+        self.model    = os.getenv("MODEL_NAME", "mistral-small-24b-w8a8")
+
+    def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 800) -> str:
+        if not self.api_key:
+            raise RuntimeError("API_KEY is not set")
         url = f"{self.base_url}/chat/completions"
-        
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 500
+            "max_tokens": max_tokens,
         }
-        
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=data)
-        req.add_header('Content-Type', 'application/json')
-        
-        if self.api_key:
-            req.add_header('Authorization', f'Bearer {self.api_key}')
-        
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Authorization", f"Bearer {self.api_key}")
+
         try:
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                
-                if "choices" in result and len(result["choices"]) > 0:
-                    return result["choices"][0]["message"]["content"]
-                return ""
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return (
+                    result.get("choices", [{}])[0]
+                          .get("message", {})
+                          .get("content", "")
+                          .strip()
+                )
         except Exception as e:
-            print(f"Error calling Mistral API: {e}")
+            print(f"[LLM ERROR] {e}")
             return ""
 
+# ---------- Code Generation tool ----------
+class CodeGenTool(Tool):
+    def __init__(self):
+        super().__init__(name="code_gen_tool", description="Generate python code for the given task.")
+        self.llm_client = MistralLLMClient()
 
+    def execute(self, task: str = "") -> str:
+        messages = [
+            {"role": "system", "content": CODEGEN_SYSTEM_PROMPT},
+            {"role": "user", "content": CODEGEN_USER_PROMPT.format(language="python", task=task)},
+        ]
+        return self.llm_client.chat_completion(messages) or "Error calling code gen"
+
+# ---------- Code Validation tool ----------
+VALIDATE_SYSTEM_PROMPT = (
+    "You are a senior code reviewer. Validate the submitted code for correctness, "
+    "readability, edge cases, performance, security, and style. "
+    "Respond with a concise review including:\n"
+    "- Summary verdict (Pass/Needs changes)\n"
+    "- Issues (with line refs if possible)\n"
+    "- Security concerns\n"
+    "- Suggested fixes (patch-style or exact snippets)\n"
+    "- Tests to add\n"
+)
+
+VALIDATE_USER_PROMPT = """Validate the following code.
+
+Language: {language}
+
+Guidelines (optional):
+{guidelines}
+Code:
+```
+{code}
+```
+"""
+class CodeValidateTool(Tool):
+    def __init__(self):
+        super().__init__(name="code_validate_tool", description="Validate code for bugs, security, style, and tests.")
+        self.llm_client = MistralLLMClient()
+
+    def execute(self, code: str = "", language: str = "python", guidelines: str = "") -> str:
+        if not code.strip():
+            return "Error: no code provided for validation."
+        messages = [
+            {"role": "system", "content": VALIDATE_SYSTEM_PROMPT},
+            {"role": "user", "content": VALIDATE_USER_PROMPT.format(
+                language=language,
+                guidelines=guidelines or "N/A",
+                code=code
+            )},
+        ]
+        return self.llm_client.chat_completion(messages, temperature=0.2, max_tokens=1200) or "Error calling code validation"
+
+# ---------- ReAct agent ----------
 class ReActAgent:
     """
-    ReAct Agent that combines reasoning (thought) with acting (tool use)
-    to solve problems step by step.
+    Minimal agent: chooses between code generation and code validation.
+    Expects run(query | payload) -> {'answer': str, 'history': [...]}
     """
-    
-    def __init__(self, tools: List[Tool], llm_client=None, max_steps: int = 10, verbose: bool = True):
-        self.tools = {tool.name: tool for tool in tools}
-        self.llm_client = llm_client or MistralLLMClient()
-        self.max_steps = max_steps
+    def __init__(self, tools: List[Tool], llm_client=None, max_steps: int = 3, verbose: bool = False):
+        self.tools = {t.name: t for t in tools}
         self.verbose = verbose
         self.history: List[Step] = []
-    
-    def _get_tools_description(self) -> str:
-        """Generate a description of available tools"""
-        descriptions = []
-        for tool in self.tools.values():
-            descriptions.append(f"- {tool.name}: {tool.description}")
-        return "\n".join(descriptions)
-    
-    def _parse_action(self, text: str) -> Optional[tuple[str, str]]:
-        """Parse action from text in format: Action: tool_name[input]"""
-        action_patterns = [
-            r"Action:\s*(\w+)\[(.*?)\]",
-            r"Action:\s*(\w+)\((.*?)\)",
-            r"I'll use (\w+) with input: (.*)",
-            r"Using (\w+): (.*)"
-        ]
-        
-        for pattern in action_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).lower(), match.group(2).strip()
-        return None
-    
-    def _execute_action(self, tool_name: str, tool_input: str) -> str:
-        """Execute a tool and return the observation"""
-        if tool_name in self.tools:
-            return self.tools[tool_name].execute(tool_input)
-        return f"Error: Tool '{tool_name}' not found"
-    
-    def _generate_prompt(self, question: str) -> str:
-        """Generate prompt for the LLM"""
-        context = self._create_context()
-        
-        prompt = f"""You are a ReAct agent that helps manage a todo list application.
+        self.llm_client = llm_client
 
-Available tools:
-{self._get_tools_description()}
+    def _use_tool(self, tool_name: str, *args, **kwargs) -> str:
+        tool = self.tools.get(tool_name)
+        if not tool:
+            obs = f"Error: {tool_name} not available"
+            self.history.append(Step(StepType.OBSERVATION, obs))
+            return obs
+        out = tool.execute(*args, **kwargs)
+        self.history.append(Step(StepType.OBSERVATION, out))
+        return out
 
-To use a tool, format your response EXACTLY as:
-Thought: [your reasoning about what to do next]
-Action: tool_name[input]
+    def run(self, query: Any) -> Dict[str, Any]:
+        # Decide mode
+        mode = "generate"
 
-After receiving an observation, think again and either use another tool or provide the final answer.
+        if isinstance(query, dict) and query.get("mode") == "validate":
+            mode = "validate"
+        elif isinstance(query, str):
+            qlow = query.lower()
+            if qlow.startswith("validate:") or qlow.startswith("review:") or "```" in qlow:
+                mode = "validate"
 
-Question: {question}
+        if mode == "validate":
+            self.history.append(Step(StepType.THOUGHT, "I should validate the provided code."))
+            self.history.append(Step(StepType.ACTION, "code_validate_tool[...]"))
 
-{context}
-
-What is your next thought and action? Remember to format as:
-Thought: [reasoning]
-Action: tool_name[input]
-"""
-        return prompt
-    
-    def _call_llm(self, question: str) -> str:
-        """Call the LLM to generate the next step"""
-        prompt = self._generate_prompt(question)
-        
-        messages = [
-            {"role": "system", "content": "You are a helpful ReAct agent that manages todos."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.llm_client.chat_completion(messages)
-        return response if response else self._fallback_response(question)
-    
-    def _fallback_response(self, question: str) -> str:
-        """Fallback response when LLM is not available"""
-        if "add" in question.lower():
-            return "Thought: I need to add a new todo item.\nAction: add_todo[New todo item]"
-        elif "delete" in question.lower() or "remove" in question.lower():
-            return "Thought: I need to delete a todo item.\nAction: delete_todo[1]"
-        elif "list" in question.lower() or "show" in question.lower():
-            return "Thought: I need to list all todos.\nAction: list_todos[]"
-        else:
-            return "Thought: I'm not sure what to do with this request."
-    
-    def run(self, question: str) -> Dict[str, Any]:
-        """
-        Run the ReAct agent loop to answer a question.
-        Returns a dictionary with the answer and history.
-        """
-        
-        if self.verbose:
-            print(f"Question: {question}")
-            print("-" * 50)
-        
-        for step_num in range(self.max_steps):
-            # Generate thought and action from LLM
-            llm_response = self._call_llm(question)
-            
-            # Extract thought
-            thought_match = re.search(r"Thought:\s*(.*?)(?=Action:|$)", llm_response, re.IGNORECASE | re.DOTALL)
-            if thought_match:
-                thought = thought_match.group(1).strip()
-                self.history.append(Step(StepType.THOUGHT, thought))
-                if self.verbose:
-                    print(f"Thought {step_num + 1}: {thought}")
-            
-            # Parse and execute action
-            action_parsed = self._parse_action(llm_response)
-            
-            if action_parsed:
-                tool_name, tool_input = action_parsed
-                action_str = f"{tool_name}[{tool_input}]"
-                self.history.append(Step(StepType.ACTION, action_str))
-                
-                if self.verbose:
-                    print(f"Action {step_num + 1}: {action_str}")
-                
-                # Execute tool and get observation
-                observation = self._execute_action(tool_name, tool_input)
-                self.history.append(Step(StepType.OBSERVATION, observation))
-                
-                if self.verbose:
-                    print(f"Observation {step_num + 1}: {observation}")
-                    print("-" * 30)
-                
-                # Check if task is complete
-                if "successfully" in observation.lower() or step_num >= self.max_steps - 2:
-                    answer = self._generate_answer(question)
-                    self.history.append(Step(StepType.ANSWER, answer))
-                    if self.verbose:
-                        print(f"Answer: {answer}")
-                    return {"answer": answer, "history": self.get_history_dict()}
+            if isinstance(query, dict):
+                code = query.get("code", "")
+                language = query.get("language", "python")
+                guidelines = query.get("guidelines", "")
             else:
-                # No action found, generate final answer
-                answer = self._generate_answer(question)
-                self.history.append(Step(StepType.ANSWER, answer))
-                if self.verbose:
-                    print(f"Answer: {answer}")
-                return {"answer": answer, "history": self.get_history_dict()}
-        
-        # Max steps reached
-        answer = "I've reached the maximum number of steps. " + self._generate_answer(question)
+                code = query
+                language = "python"
+                guidelines = ""
+
+            answer = self._use_tool("code_validate_tool", code=code, language=language, guidelines=guidelines)
+
+        else:
+            self.history.append(Step(StepType.THOUGHT, "I should generate code for the user's request."))
+            self.history.append(Step(StepType.ACTION, "code_gen_tool[...]"))
+            answer = self._use_tool("code_gen_tool", query)
+
         self.history.append(Step(StepType.ANSWER, answer))
         return {"answer": answer, "history": self.get_history_dict()}
-    
-    def _generate_answer(self, question: str) -> str:
-        """Generate final answer based on the history"""
-        observations = [step.content for step in self.history 
-                       if step.type == StepType.OBSERVATION]
-        
-        if observations:
-            last_observation = observations[-1]
-            if "successfully" in last_observation.lower():
-                return last_observation
-            return f"Based on my actions: {last_observation}"
-        
-        return "I couldn't complete the requested task."
-    
-    def _create_context(self) -> str:
-        """Create context from history for the next thought"""
-        if not self.history:
-            return ""
-        
-        context_parts = ["Previous steps:"]
-        for step in self.history[-6:]:  # Last 6 steps for context
-            context_parts.append(f"{step.type.value.capitalize()}: {step.content}")
-        return "\n".join(context_parts)
-    
+
     def get_history_dict(self) -> List[Dict[str, str]]:
-        """Return the history as a list of dictionaries"""
-        return [{"type": step.type.value, "content": step.content} for step in self.history]
-    
+        return [{"type": s.type.value, "content": s.content} for s in self.history]
+
     def reset(self):
-        """Reset the agent's history"""
         self.history = []
 
-
-def main():
-    """Test the ReAct agent with todo operations"""
-    
-    # Initialize tools
-    tools = [
-        AddTodoTool(),
-        DeleteTodoTool(),
-        ListTodosTool()
-    ]
-    
-    # Create agent with Mistral LLM
-    agent = ReActAgent(tools, verbose=True)
-    
-    # Test queries
-    queries = [
-        "Show me all the todos",
-        "Add a todo to buy groceries",
-        "Delete todo with ID 1"
-    ]
-    
-    for query in queries:
-        print("\n" + "=" * 60)
-        print(f"Processing: {query}")
-        print("=" * 60)
-        
-        result = agent.run(query)
-        
-        # Reset for next query
-        agent.reset()
-        print("\n")
-
-
-if __name__ == "__main__":
-    main()
