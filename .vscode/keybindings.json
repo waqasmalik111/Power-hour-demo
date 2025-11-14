@@ -1,15 +1,16 @@
 [
   {
-    "key": "cmd+shift+Y",
+    "key": "cmd+alt+g",
     "command": "workbench.action.tasks.runTask",
     "args": "Generate Code (prompt) v3",
-    "when": "editorTextFocus"
+    "when": "editorTextFocus || terminalFocus"
   },
   {
-    "key": "cmd+shift+L",
+    "key": "cmd+alt+v",
     "command": "workbench.action.tasks.runTask",
     "args": "Validate Current File v3",
-    "when": "editorTextFocus && editorHasSelection"
+    "when": "editorHasSelection && (editorTextFocus || terminalFocus)"
   }
 ]
+
 
