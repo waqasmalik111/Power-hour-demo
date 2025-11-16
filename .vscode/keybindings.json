@@ -1,10 +1,10 @@
 [
   {
-    "key": "cmd+alt+g",
-    "command": "workbench.action.tasks.runTask",
-    "args": "Generate Code (prompt) v3",
-    "when": "editorTextFocus || terminalFocus"
-  },
+  "key": "cmd+shift+Y",
+  "command": "workbench.action.tasks.runTask",
+  "args": "Generate Code (prompt to file)",
+  "when": "editorTextFocus"
+},
   {
     "key": "cmd+alt+v",
     "command": "workbench.action.tasks.runTask",

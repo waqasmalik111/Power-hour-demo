@@ -1,9 +1,5 @@
 {
   "version": "2.0.0",
-  "options": {
-    "cwd": "${workspaceFolder}",
-    "envFile": "${workspaceFolder}/.devspaces.env"
-  },
   "tasks": [
     {
       "label": "Generate Code (prompt)",
@@ -11,33 +7,27 @@
       "command": "bash",
       "args": [
         "-lc",
-        "set -a; [ -f .devspaces.env ] && . .devspaces.env; set +a; scripts-for-codegen/generate.sh \"$AGENT_ROUTE\" \"$GEN_LANG\" \"${input:genPrompt}\""
+        "scripts-for-codegen/generate.sh \"${input:genPrompt}\" \"${file}\""
       ],
       "problemMatcher": []
     },
     {
-  "label": "Validate Current File (safe)",
-  "type": "shell",
-  "command": "bash",
-  "args": [
-    "-lc",
-    "set -a; [ -f .devspaces.env ] && . .devspaces.env; set +a; if [ -n \"$SEL\" ]; then printf '%s' \"$SEL\"; else cat \"${file}\"; fi | scripts-for-codegen/validate.sh \"$AGENT_ROUTE\" \"$VALIDATE_LANG\""
-  ],
-  "options": {
-    "env": {
-      "SEL": "${selectedText}"
+      "label": "Validate Current File",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "scripts-for-codegen/validate.sh \"${file}\""
+      ],
+      "problemMatcher": []
     }
-  },
-  "problemMatcher": []
-}
-
   ],
   "inputs": [
     {
       "id": "genPrompt",
       "type": "promptString",
       "description": "Describe the code to generate",
-      "default": "Write a Python FastAPI service with one /health endpoint"
+      "default": "Write a Python function"
     }
   ]
 }

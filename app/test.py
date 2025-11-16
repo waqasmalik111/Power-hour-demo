@@ -1,18 +1,12 @@
-import os, sys   # unused imports
+def add_numbers(a: float, b: float) -> float:
+    """
+    Add two numbers together.
 
-total = 0  # global
+    Parameters:
+    a (float): The first number to add.
+    b (float): The second number to add.
 
-def add_numbers(a: float, b: float, results=[])->float:
-    """Return the sum of two numbers as a float."""
-    try:
-        total = a + b              # shadows global 'total'
-        results.append(total)      # mutable default arg (state leaks across calls)
-        if b == 0:
-            raise Exception("bad") # raising generic Exception
-        return str(total)          # WRONG TYPE: returns str, not float
-        print("unreachable")       # unreachable code
-    except:
-        pass                       # bare except (swallows errors)
-
-def divide(a, b):
-    return a / b                   # potential ZeroDivisionError (no checks)
+    Returns:
+    float: The sum of the two numbers.
+    """
+    return a + b
