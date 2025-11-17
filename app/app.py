@@ -1,193 +1,378 @@
-from flask import Flask, request, jsonify, send_file
+"""
+Enhanced Flask API for AI Code Generation Agent
+Includes cluster awareness and deployment capabilities
+"""
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from dotenv import load_dotenv
-import json
-import os
 import sys
-from datetime import datetime
+import os
 
-# Make sure we can import our agent logic
-# Add parent directory (repo root in the container) to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from agents.react_agent import ReActAgent, CodeGenTool, CodeValidateTool
-load_dotenv()
+# Add paths for importing enhanced agent
+current_dir = os.path.dirname(os.path.abspath(__file__))
+agents_dir = os.path.join(current_dir, '..', 'agents')
+agent_enhanced_dir = os.path.join(current_dir, '..', 'agents', 'agent_enhanced')
+
+sys.path.insert(0, agents_dir)
+sys.path.insert(0, agent_enhanced_dir)
+
+# Import enhanced agent
+from enhanced_react_agent import create_enhanced_agent
 
 app = Flask(__name__)
 CORS(app)
 
-# ---- Config / env -------------------------------------------------
+# Create enhanced agent with cluster awareness
+agent = create_enhanced_agent(verbose=False)
 
-# Where to store todos (simple file persistence)
-TODOS_FILE = os.getenv('TODOS_FILE', 'todos.json')
 
-# Port we want Flask to listen on (default to 8080 for OpenShift)
-PORT = int(os.getenv('PORT', 8080))
-
-# Host we want Flask to bind to.
-# 0.0.0.0 is required so the OpenShift Service/Route can hit the pod.
-HOST = os.getenv('HOST', '0.0.0.0')
-
-# ---- Helpers for todo handling -----------------------------------
-
-def load_todos():
-    if os.path.exists(TODOS_FILE):
-        with open(TODOS_FILE, 'r') as f:
-            return json.load(f)
-    return []
-
-def save_todos(todos):
-    with open(TODOS_FILE, 'w') as f:
-        json.dump(todos, f, indent=2)
-
-def get_next_id(todos):
-    if not todos:
-        return 1
-    return max(todo['id'] for todo in todos) + 1
-
-# ---- Routes: basic info / homepage -------------------------------
-
-@app.route('/')
-def index():
-    html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'index.html')
-    if os.path.exists(html_path):
-        return send_file(html_path)
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
     return jsonify({
-        'message': 'Simple Todo API + ReAct agent service',
-        'endpoints': {
-            'POST /agent/execute': 'Send natural language to the ReAct agent'
-        }
-    })
+        "status": "healthy",
+        "agent": "ready",
+        "cluster_aware": True
+    }), 200
 
-# ---- Routes: Todo CRUD -------------------------------------------
-
-@app.route('/todos', methods=['GET'])
-def get_todos():
-    todos = load_todos()
-    return jsonify(todos)
-
-@app.route('/todos/<int:id>', methods=['GET'])
-def get_todo(id):
-    todos = load_todos()
-    todo = next((t for t in todos if t['id'] == id), None)
-    if todo:
-        return jsonify(todo)
-    return jsonify({'error': 'Todo not found'}), 404
-
-@app.route('/todos', methods=['POST'])
-def create_todo():
-    data = request.get_json()
-
-    if not data or 'title' not in data:
-        return jsonify({'error': 'Title is required'}), 400
-
-    todos = load_todos()
-    new_todo = {
-        'id': get_next_id(todos),
-        'title': data['title'],
-        'completed': data.get('completed', False),
-        'created_at': datetime.now().isoformat()
-    }
-
-    todos.append(new_todo)
-    save_todos(todos)
-
-    return jsonify(new_todo), 201
-
-@app.route('/todos/<int:id>', methods=['PUT'])
-def update_todo(id):
-    todos = load_todos()
-    todo = next((t for t in todos if t['id'] == id), None)
-
-    if not todo:
-        return jsonify({'error': 'Todo not found'}), 404
-
-    data = request.get_json()
-    if 'title' in data:
-        todo['title'] = data['title']
-    if 'completed' in data:
-        todo['completed'] = data['completed']
-
-    save_todos(todos)
-    return jsonify(todo)
-
-@app.route('/todos/<int:id>', methods=['DELETE'])
-def delete_todo(id):
-    todos = load_todos()
-    todos = [t for t in todos if t['id'] != id]
-    save_todos(todos)
-    return jsonify({'message': 'Todo deleted'}), 200
-
-# ---- Routes: Agent execution -------------------------------------
 
 @app.route('/agent/execute', methods=['POST'])
 def execute_agent():
-    """Execute a ReAct agent with a given query."""
-    data = request.get_json()
-
-    if not data or 'query' not in data:
-        return jsonify({'error': 'Query is required'}), 400
-
-    query = data['query']
-
-    # Tools talk back to this same Flask app.
-    # NOTE: using localhost:{PORT} is fine right now because
-    # the tools run in-process alongside this API in the same container.
-    tools = [
-        CodeGenTool(),
-	CodeValidateTool(),
-    ]
-
-    agent = ReActAgent(tools, verbose=False)
-
+    """
+    Execute agent for code generation
+    
+    Request body:
+    {
+        "query": "Create a Flask API with greeting endpoint",
+        "language": "python"  (optional)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "answer": "generated code...",
+        "history": [...],
+        "cluster_context": {...},
+        "query": "original query"
+    }
+    """
     try:
+        data = request.json
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+        
+        query = data.get('query', '')
+        
+        if not query:
+            return jsonify({
+                "success": False,
+                "error": "No query provided"
+            }), 400
+        
+        # Run the agent
         result = agent.run(query)
+        
         return jsonify({
-            'success': True,
-            'query': query,
-            'answer': result['answer'],
-            'history': result['history']
-        })
+            "success": True,
+            "answer": result.get("answer", ""),
+            "history": result.get("history", []),
+            "cluster_context": result.get("cluster_context", {}),
+            "query": query
+        }), 200
+        
     except Exception as e:
         return jsonify({
-            'success': False,
-            'error': str(e)
+            "success": False,
+            "error": str(e)
         }), 500
+
+
 @app.route('/agent/validate', methods=['POST'])
 def validate_code():
     """
-    Direct endpoint for code validation.
-    Example POST body:
-      {
-        "code": "def add(a,b): return a+b",
-        "language": "python",
-        "guidelines": "PEP8 style"
-      }
+    Validate code for production readiness
+    
+    Request body:
+    {
+        "code": "your code here",
+        "language": "python"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "report": "validation report...",
+        "history": [...]
+    }
     """
-    data = request.get_json() or {}
-    code = data.get('code', '')
-    language = data.get('language', 'python')
-    guidelines = data.get('guidelines', '')
-
-    tools = [CodeGenTool(), CodeValidateTool()]
-    agent = ReActAgent(tools, verbose=False)
-
     try:
-        payload = {"mode": "validate", "code": code, "language": language, "guidelines": guidelines}
-        result = agent.run(payload)
+        data = request.json
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+        
+        code = data.get('code', '')
+        language = data.get('language', 'python')
+        
+        if not code:
+            return jsonify({
+                "success": False,
+                "error": "No code provided for validation"
+            }), 400
+        
+        # Run validation
+        result = agent.run({
+            "mode": "validate",
+            "code": code,
+            "language": language
+        })
+        
         return jsonify({
             "success": True,
-            "answer": result["answer"],
-            "history": result["history"]
-        })
+            "report": result.get("answer", ""),
+            "history": result.get("history", []),
+            "cluster_context": result.get("cluster_context", {})
+        }), 200
+        
     except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
-# ---- Main entrypoint ---------------------------------------------
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/agent/deploy', methods=['POST'])
+def deploy_app():
+    """
+    Generate and deploy telco application to OpenShift
+    
+    Request body:
+    {
+        "description": "telco messaging application",
+        "app_name": "my-telco-app",
+        "namespace": "telco-demo"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "generated_code": "...",
+        "deployment_result": "...",
+        "app_name": "...",
+        "namespace": "..."
+    }
+    """
+    try:
+        data = request.json
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+        
+        description = data.get('description', 'telco messaging application')
+        app_name = data.get('app_name', 'ai-telco-app')
+        namespace = data.get('namespace', 'telco-demo')
+        
+        print(f"[API] Starting deployment: {app_name} in {namespace}")
+        
+        # Deploy the application
+        result = agent.deploy_telco_app(
+            description=description,
+            app_name=app_name,
+            namespace=namespace
+        )
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        print(f"[API] Deployment error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/agent/cluster-info', methods=['GET'])
+def cluster_info():
+    """
+    Get current OpenShift cluster information
+    
+    Query params:
+    - namespace (optional): specific namespace to query
+    
+    Response:
+    {
+        "success": true,
+        "namespace": "current-namespace",
+        "pods": "...",
+        "deployments": "..."
+    }
+    """
+    try:
+        from openshift_tools import get_current_namespace, OpenShiftClusterTool
+        
+        namespace = request.args.get('namespace', '') or get_current_namespace()
+        cluster_tool = OpenShiftClusterTool()
+        
+        # Get pods
+        pods = cluster_tool.execute("pods", namespace=namespace, output_format="json")
+        
+        # Get deployments
+        deployments = cluster_tool.execute("deployments", namespace=namespace, output_format="json")
+        
+        return jsonify({
+            "success": True,
+            "namespace": namespace,
+            "pods": pods,
+            "deployments": deployments,
+            "cluster_aware": True
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/agent/deployment-status/<app_name>', methods=['GET'])
+def deployment_status(app_name):
+    """
+    Check status of a deployed application
+    
+    Query params:
+    - namespace (optional): namespace where app is deployed
+    
+    Response:
+    {
+        "success": true,
+        "app_name": "...",
+        "namespace": "...",
+        "url": "https://...",
+        "pods": "...",
+        "status": "..."
+    }
+    """
+    try:
+        from openshift_tools import get_current_namespace, OpenShiftClusterTool
+        import subprocess
+        
+        namespace = request.args.get('namespace', '') or get_current_namespace()
+        cluster_tool = OpenShiftClusterTool()
+        
+        # Get deployment info
+        deployment = cluster_tool.execute(
+            "deployment",
+            namespace=namespace,
+            name=app_name,
+            output_format="json"
+        )
+        
+        # Get pods
+        pods = cluster_tool.execute(
+            "pods",
+            namespace=namespace,
+            labels=f"app={app_name}",
+            output_format="json"
+        )
+        
+        # Get route
+        route_result = subprocess.run(
+            ["oc", "get", "route", app_name, "-n", namespace, "-o", "jsonpath={.spec.host}"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        url = f"https://{route_result.stdout.strip()}" if route_result.returncode == 0 and route_result.stdout else None
+        
+        return jsonify({
+            "success": True,
+            "app_name": app_name,
+            "namespace": namespace,
+            "url": url,
+            "deployment": deployment,
+            "pods": pods
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/', methods=['GET'])
+def index():
+    """
+    API documentation and information
+    """
+    return jsonify({
+        "name": "Enhanced AI Code Generation Agent API",
+        "version": "2.0.0",
+        "description": "AI-powered code generation with OpenShift cluster awareness and deployment",
+        "features": [
+            "Code generation from natural language",
+            "Code validation and security checks",
+            "OpenShift cluster awareness",
+            "Direct deployment to OpenShift",
+            "Telco messaging application generation"
+        ],
+        "endpoints": {
+            "GET /": "API documentation (this page)",
+            "GET /health": "Health check",
+            "POST /agent/execute": "Generate code from prompt",
+            "POST /agent/validate": "Validate code quality and security",
+            "POST /agent/deploy": "Generate and deploy application to OpenShift",
+            "GET /agent/cluster-info": "Get cluster information",
+            "GET /agent/deployment-status/<app_name>": "Check deployment status"
+        },
+        "examples": {
+            "generate_code": {
+                "method": "POST",
+                "endpoint": "/agent/execute",
+                "body": {
+                    "query": "Create a Flask API with greeting endpoint"
+                }
+            },
+            "validate_code": {
+                "method": "POST",
+                "endpoint": "/agent/validate",
+                "body": {
+                    "code": "from flask import Flask\napp = Flask(__name__)",
+                    "language": "python"
+                }
+            },
+            "deploy_app": {
+                "method": "POST",
+                "endpoint": "/agent/deploy",
+                "body": {
+                    "description": "telco messaging application",
+                    "app_name": "my-telco-app",
+                    "namespace": "telco-demo"
+                }
+            }
+        },
+        "cluster_aware": True,
+        "status": "ready"
+    }), 200
+
 
 if __name__ == '__main__':
-    app.run(
-        host=HOST,  # <- critical for OpenShift Service/Route
-        port=PORT,  # <- default 8080 matches container/Service
-        debug=os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    )
-
+    port = int(os.getenv('PORT', 8080))
+    print("=" * 60)
+    print("Enhanced AI Code Generation Agent API")
+    print("=" * 60)
+    print(f"Starting server on port {port}")
+    print(f"Cluster-aware: Yes")
+    print(f"Deployment capable: Yes")
+    print("=" * 60)
+    app.run(host='0.0.0.0', port=port, debug=False)
