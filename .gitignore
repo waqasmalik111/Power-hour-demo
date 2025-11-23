@@ -1,0 +1,19 @@
+# Python venv
+venv/
+.env/
+__pycache__/
+*.pyc
+
+# VS Code / DevSpaces
+.vscode/
+.devspaces/
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db

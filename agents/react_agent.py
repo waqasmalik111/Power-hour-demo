@@ -61,7 +61,7 @@ class MistralLLMClient:
         self.api_key  = os.getenv("API_KEY", "")
         self.model    = os.getenv("MODEL_NAME", "mistral-small-24b-w8a8")
 
-    def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 800) -> str:
+    def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 8192) -> str:
         if not self.api_key:
             raise RuntimeError("API_KEY is not set")
         url = f"{self.base_url}/chat/completions"
@@ -100,7 +100,7 @@ class CodeGenTool(Tool):
             {"role": "system", "content": CODEGEN_SYSTEM_PROMPT},
             {"role": "user", "content": CODEGEN_USER_PROMPT.format(language="python", task=task)},
         ]
-        return self.llm_client.chat_completion(messages) or "Error calling code gen"
+        return self.llm_client.chat_completion(messages, max_tokens=8192) or "Error calling code gen"
 
 # ---------- Code Validation tool ----------
 VALIDATE_SYSTEM_PROMPT = (

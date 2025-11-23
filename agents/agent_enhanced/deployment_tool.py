@@ -126,6 +126,11 @@ class OpenShiftDeploymentTool:
             requirements.append("Flask==3.0.0")
             if "CORS" in code or "cors" in code.lower():
                 requirements.append("Flask-CORS==4.0.0")
+            # Check for Flask-SocketIO
+            if "flask_socketio" in code.lower() or "socketio" in code.lower():
+                requirements.append("Flask-SocketIO==5.3.5")
+                requirements.append("python-socketio==5.10.0")
+                requirements.append("python-engineio==4.8.0")
             requirements.append("gunicorn==21.2.0")
         
         if "fastapi" in code.lower():

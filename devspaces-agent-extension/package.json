@@ -1,15 +1,16 @@
 {
   "name": "devspaces-agent-extension",
   "displayName": "DevSpaces Agent Commands",
-  "description": "Validate selected code and generate code using your ReAct Agent backend.",
-  "version": "0.0.1",
+  "description": "Validate code, generate code, and deploy applications using your ReAct Agent backend.",
+  "version": "0.0.2",
   "publisher": "your-org",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Other"],
   "main": "extension.js",
   "activationEvents": [
     "onCommand:agent.validateSelection",
-    "onCommand:agent.generateCode"
+    "onCommand:agent.generateCode",
+    "onCommand:agent.deployToOpenShift"
   ],
   "contributes": {
     "configuration": {
@@ -18,7 +19,7 @@
         "agent.route": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Base URL of your agent service (e.g. https://react-agent.apps.<cluster-domain>). If empty, the extension tries process.env.AGENT_ROUTE."
+          "markdownDescription": "Base URL of your agent service (e.g. http://localhost:8080). If empty, the extension tries process.env.AGENT_ROUTE."
         },
         "agent.defaultLanguage": {
           "type": "string",
@@ -28,8 +29,9 @@
       }
     },
     "commands": [
-      { "command": "agent.validateSelection", "title": "Validate Selection with Agent" },
-      { "command": "agent.generateCode", "title": "Generate Code with Agent" }
+      { "command": "agent.validateSelection", "title": "Agent: Validate Selection" },
+      { "command": "agent.generateCode", "title": "Agent: Generate Code" },
+      { "command": "agent.deployToOpenShift", "title": "Agent: Deploy to OpenShift" }
     ],
     "menus": {
       "editor/context": [
@@ -37,12 +39,14 @@
       ],
       "commandPalette": [
         { "command": "agent.validateSelection", "when": "editorTextFocus" },
-        { "command": "agent.generateCode", "when": "editorTextFocus" }
+        { "command": "agent.generateCode", "when": "editorTextFocus" },
+        { "command": "agent.deployToOpenShift" }
       ]
     },
     "keybindings": [
-      { "command": "agent.validateSelection", "key": "ctrl+alt+v", "when": "editorTextFocus && editorHasSelection" },
-      { "command": "agent.generateCode", "key": "ctrl+alt+g", "when": "editorTextFocus" }
+      { "command": "agent.validateSelection", "key": "ctrl+alt+v", "mac": "cmd+alt+v", "when": "editorTextFocus && editorHasSelection" },
+      { "command": "agent.generateCode", "key": "ctrl+alt+g", "mac": "cmd+alt+g", "when": "editorTextFocus" },
+      { "command": "agent.deployToOpenShift", "key": "ctrl+alt+d", "mac": "cmd+alt+d" }
     ]
   },
   "dependencies": {
