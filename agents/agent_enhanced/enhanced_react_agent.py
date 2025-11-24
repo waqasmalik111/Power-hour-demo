@@ -1,6 +1,6 @@
 """
 Enhanced wrapper around your existing ReActAgent
-Adds cluster awareness without modifying original
+Adds cluster awareness, node selection, and intelligent deployment
 """
 import sys
 import os
@@ -9,12 +9,19 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from react_agent import ReActAgent, CodeGenTool, CodeValidateTool
-from openshift_tools import OpenShiftClusterTool, OpenShiftLogsTool, check_openshift_login, get_current_namespace
+from openshift_tools import (
+    OpenShiftClusterTool, 
+    OpenShiftLogsTool, 
+    OpenShiftNodeTool,
+    OpenShiftClusterInfoTool,
+    check_openshift_login, 
+    get_current_namespace
+)
 from deployment_tool import OpenShiftDeploymentTool
 
 
 class EnhancedReActAgent(ReActAgent):
-    """Enhanced agent with cluster awareness and deployment"""
+    """Enhanced agent with cluster awareness, node selection, and intelligent deployment"""
     
     def __init__(self, tools=None, **kwargs):
         # Add new tools to existing ones
@@ -29,6 +36,8 @@ class EnhancedReActAgent(ReActAgent):
         
         super().__init__(tools, **kwargs)
         self.cluster_context = {}
+        self.node_tool = OpenShiftNodeTool()
+        self.cluster_info_tool = OpenShiftClusterInfoTool()
     
     def run(self, query):
         """Enhanced run with cluster context"""
@@ -69,13 +78,184 @@ class EnhancedReActAgent(ReActAgent):
         
         return context
     
-    def deploy_telco_app(self, description: str, app_name: str = "telco-app", 
-                         namespace: str = "telco-demo"):
+    def get_cluster_overview(self, namespace: str = "") -> str:
+        """Get and format comprehensive cluster overview"""
+        try:
+            overview = self.cluster_info_tool.get_cluster_overview(namespace)
+            return self.cluster_info_tool.format_cluster_overview(overview)
+        except Exception as e:
+            return f"Error getting cluster overview: {str(e)}"
+    
+    def prepare_node_for_deployment(self, label_key: str = "deployment", 
+                                   label_value: str = "telco-app") -> dict:
         """
-        Complete workflow: Generate → Validate → Deploy
+        Find node with least workload and label it for deployment
+        
+        Returns:
+            dict with:
+                - success: bool
+                - node_name: str
+                - label: dict
+                - message: str
         """
-        # IMPROVED: Explicit prompt with example to avoid template errors
-        gen_prompt = f"""Generate production Python code for Flask telco {description}.
+        try:
+            # Find node with least workload
+            target_node = self.node_tool.find_node_with_least_workload(exclude_masters=True)
+            
+            if not target_node:
+                return {
+                    "success": False,
+                    "message": "No suitable worker nodes found in cluster"
+                }
+            
+            # Label the node
+            success, message = self.node_tool.label_node(
+                target_node["name"], 
+                label_key, 
+                label_value
+            )
+            
+            if success:
+                return {
+                    "success": True,
+                    "node_name": target_node["name"],
+                    "label": {label_key: label_value},
+                    "pod_count": target_node["pod_count"],
+                    "message": f"Node {target_node['name']} labeled successfully (current pods: {target_node['pod_count']})"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": message
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error preparing node: {str(e)}"
+            }
+    
+    def check_node_label_exists(self, label_key: str, label_value: str = None) -> dict:
+        """
+        Check if nodes with specified label exist
+        
+        Returns:
+            dict with:
+                - exists: bool
+                - nodes: list of node names
+                - count: int
+        """
+        try:
+            nodes = self.node_tool.get_nodes_with_label(label_key, label_value)
+            return {
+                "exists": len(nodes) > 0,
+                "nodes": nodes,
+                "count": len(nodes)
+            }
+        except Exception as e:
+            return {
+                "exists": False,
+                "nodes": [],
+                "count": 0,
+                "error": str(e)
+            }
+    
+    def deploy_telco_app(self, 
+                        description: str, 
+                        app_name: str = "telco-app",
+                        namespace: str = "telco-demo",
+                        node_label_key: str = None,
+                        node_label_value: str = None) -> dict:
+        """
+        Complete workflow: Display Cluster Info → Generate Code → Validate → Deploy with Node Selection
+        
+        Args:
+            description: Description of the telco app to build
+            app_name: Name of the application
+            namespace: Target namespace
+            node_label_key: Node label key for deployment (e.g., "deployment")
+            node_label_value: Node label value for deployment (e.g., "telco-app")
+        """
+        result = {
+            "success": False,
+            "cluster_overview": "",
+            "node_selection": {},
+            "generated_code": "",
+            "deployment_result": "",
+            "app_name": app_name,
+            "namespace": namespace
+        }
+        
+        try:
+            # Step 1: Display cluster overview
+            print("\n" + "="*80)
+            print("STEP 1: Gathering Cluster Information")
+            print("="*80)
+            
+            cluster_overview = self.get_cluster_overview(namespace)
+            result["cluster_overview"] = cluster_overview
+            print(cluster_overview)
+            
+            # Step 2: Handle node selection
+            print("\n" + "="*80)
+            print("STEP 2: Node Selection for Deployment")
+            print("="*80)
+            
+            node_selector = None
+            
+            if node_label_key and node_label_value:
+                # Check if label exists
+                label_check = self.check_node_label_exists(node_label_key, node_label_value)
+                
+                if label_check["exists"]:
+                    print(f"✅ Found {label_check['count']} node(s) with label {node_label_key}={node_label_value}")
+                    print(f"   Nodes: {', '.join(label_check['nodes'])}")
+                    node_selector = {node_label_key: node_label_value}
+                    result["node_selection"] = {
+                        "requested": True,
+                        "label": node_selector,
+                        "nodes": label_check['nodes'],
+                        "status": "Label exists"
+                    }
+                else:
+                    print(f"⚠️  Label {node_label_key}={node_label_value} not found on any nodes")
+                    print(f"🔍 Creating label on node with least workload...")
+                    
+                    # Auto-label a node
+                    prep_result = self.prepare_node_for_deployment(node_label_key, node_label_value)
+                    
+                    if prep_result["success"]:
+                        print(f"✅ {prep_result['message']}")
+                        node_selector = prep_result["label"]
+                        result["node_selection"] = {
+                            "requested": True,
+                            "label": node_selector,
+                            "nodes": [prep_result["node_name"]],
+                            "status": "Label created",
+                            "pod_count": prep_result["pod_count"]
+                        }
+                    else:
+                        print(f"❌ {prep_result['message']}")
+                        print(f"⚠️  Deployment will proceed without node selector")
+                        result["node_selection"] = {
+                            "requested": True,
+                            "label": {node_label_key: node_label_value},
+                            "status": "Failed to create label",
+                            "error": prep_result["message"]
+                        }
+            else:
+                print("ℹ️  No node selector specified. Deployment will use default scheduling.")
+                result["node_selection"] = {
+                    "requested": False,
+                    "status": "No node selector"
+                }
+            
+            # Step 3: Generate code
+            print("\n" + "="*80)
+            print("STEP 3: Generating Application Code")
+            print("="*80)
+            
+            gen_prompt = f"""Generate production Python code for Flask telco {description}.
 
 Requirements:
 - Single file with Flask + Flask-SocketIO
@@ -143,12 +323,57 @@ if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)
 
 Generate similar complete code now."""
-        
-        print(f"[AGENT] Generating code for: {description}")
-        gen_result = self.run(gen_prompt)
-        code = gen_result.get("answer", "")
-        
-        # IMPROVED: More aggressive markdown fence removal
+            
+            print(f"[AGENT] Generating code for: {description}")
+            gen_result = self.run(gen_prompt)
+            code = gen_result.get("answer", "")
+            
+            # Clean up code
+            code = self._clean_generated_code(code)
+            
+            if not code or "error" in code.lower()[:100]:
+                result["error"] = "Code generation failed"
+                return result
+            
+            if "Summary verdict:" in code or "Tests to add:" in code:
+                result["error"] = "Agent generated validation instead of code"
+                return result
+            
+            print(f"✅ Generated {len(code)} characters of code")
+            result["generated_code"] = code
+            
+            # Step 4: Deploy
+            print("\n" + "="*80)
+            print("STEP 4: Deploying to OpenShift")
+            print("="*80)
+            print(f"[AGENT] Deploying {app_name} to namespace {namespace}...")
+            
+            if node_selector:
+                print(f"[AGENT] Using node selector: {node_selector}")
+            
+            deploy_tool = OpenShiftDeploymentTool()
+            deploy_result = deploy_tool.execute(
+                code=code,
+                app_name=app_name,
+                namespace=namespace,
+                language="python",
+                node_selector=node_selector
+            )
+            
+            result["deployment_result"] = deploy_result
+            result["success"] = "SUCCESSFUL" in deploy_result
+            
+            print(deploy_result)
+            
+            return result
+            
+        except Exception as e:
+            result["error"] = str(e)
+            print(f"❌ Error: {str(e)}")
+            return result
+    
+    def _clean_generated_code(self, code: str) -> str:
+        """Clean up generated code by removing markdown and fixing common issues"""
         code = code.strip()
         
         # Remove opening fences
@@ -161,73 +386,34 @@ Generate similar complete code now."""
         if code.endswith("```"):
             code = code[:-3].strip()
         
-        # Remove any remaining triple backticks that might be in the middle
+        # Remove any remaining triple backticks
         code = code.replace("```", "")
         
-        # Remove any lines that are just backticks
+        # Remove lines that are just backticks
         lines = code.split('\n')
         cleaned_lines = []
         for line in lines:
-            # Skip lines that are just backticks
             if line.strip() in ['```', '```python', '```py']:
                 continue
             cleaned_lines.append(line)
         code = '\n'.join(cleaned_lines)
         
-        # FIX: Add allow_unsafe_werkzeug=True for production Flask-SocketIO
+        # Fix Flask-SocketIO allow_unsafe_werkzeug
         if 'socketio.run(' in code and 'allow_unsafe_werkzeug' not in code:
             code = code.replace(
                 'socketio.run(app, host=',
                 'socketio.run(app, allow_unsafe_werkzeug=True, host='
             )
         
-        # FIX: Common Jinja2 template variable mismatches
+        # Fix common Jinja2 template variable mismatches
         if 'render_template_string' in code:
-            # Fix {% for message in messages %} with {{ msg.xxx }}
             if '{% for message in messages %}' in code and '{{ msg.' in code:
                 code = code.replace('{% for message in messages %}', '{% for msg in messages %}')
                 code = code.replace('{{ message.', '{{ msg.')
-            # Fix {% for msg in messages %} with {{ message.xxx }}
             if '{% for msg in messages %}' in code and '{{ message.' in code:
                 code = code.replace('{{ message.', '{{ msg.')
         
-        # DEBUG: Print what we got
-        print("=" * 80)
-        print(f"[DEBUG] Generated code length: {len(code)}")
-        print(f"[DEBUG] First 500 characters:")
-        print(code[:500])
-        print("=" * 80)
-        print(f"[DEBUG] Last 300 characters:")
-        print(code[-300:] if len(code) > 300 else code)
-        print("=" * 80)
-        
-        if not code or "error" in code.lower()[:100]:
-            return {"success": False, "error": "Code generation failed"}
-        
-        # Check if we got validation output instead of code
-        if "Summary verdict:" in code or "Tests to add:" in code:
-            print("[ERROR] Got validation output instead of code!")
-            return {"success": False, "error": "Agent generated validation instead of code"}
-        
-        print(f"[AGENT] Generated {len(code)} characters of code")
-        
-        # Deploy
-        print(f"[AGENT] Deploying to {namespace}...")
-        deploy_tool = OpenShiftDeploymentTool()
-        deploy_result = deploy_tool.execute(
-            code=code,
-            app_name=app_name,
-            namespace=namespace,
-            language="python"
-        )
-        
-        return {
-            "success": "SUCCESSFUL" in deploy_result,
-            "generated_code": code,
-            "deployment_result": deploy_result,
-            "app_name": app_name,
-            "namespace": namespace
-        }
+        return code
 
 
 def create_enhanced_agent(verbose=False):

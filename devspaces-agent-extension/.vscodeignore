@@ -1,0 +1,41 @@
+# VS Code Extension Ignore File
+# Files to exclude from the extension package
+
+# Development and testing
+.vscode/**
+.vscode-test/**
+test/**
+src/**
+**/*.test.js
+**/*.spec.js
+
+# Build artifacts
+out/
+dist/
+*.vsix
+
+# Source control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Configuration files
+.eslintrc.json
+tsconfig.json
+webpack.config.js
+.prettierrc
+
+# Node
+node_modules/**
+!node_modules/node-fetch/**
+!node_modules/whatwg-url/**
+!node_modules/webidl-conversions/**
+!node_modules/tr46/**
+
+# Misc
+.DS_Store
+*.log

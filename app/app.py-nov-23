@@ -1,6 +1,6 @@
 """
 Enhanced Flask API for AI Code Generation Agent
-Includes cluster awareness, node selection, and comprehensive deployment capabilities
+Includes cluster awareness and deployment capabilities
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -31,13 +31,7 @@ def health():
     return jsonify({
         "status": "healthy",
         "agent": "ready",
-        "cluster_aware": True,
-        "features": [
-            "cluster_overview",
-            "node_selection",
-            "auto_labeling",
-            "intelligent_deployment"
-        ]
+        "cluster_aware": True
     }), 200
 
 
@@ -153,203 +147,21 @@ def validate_code():
         }), 500
 
 
-@app.route('/agent/cluster-overview', methods=['GET'])
-def cluster_overview():
-    """
-    Get comprehensive cluster overview
-    
-    Query params:
-    - namespace (optional): specific namespace to query
-    
-    Response:
-    {
-        "success": true,
-        "overview": "formatted cluster overview",
-        "raw_data": {...}
-    }
-    """
-    try:
-        namespace = request.args.get('namespace', '')
-        overview_text = agent.get_cluster_overview(namespace)
-        
-        return jsonify({
-            "success": True,
-            "overview": overview_text
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route('/agent/nodes', methods=['GET'])
-def get_nodes():
-    """
-    Get information about cluster nodes
-    
-    Response:
-    {
-        "success": true,
-        "nodes": [...]
-    }
-    """
-    try:
-        nodes = agent.node_tool.get_nodes_info()
-        
-        return jsonify({
-            "success": True,
-            "nodes": nodes,
-            "count": len(nodes)
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route('/agent/nodes/least-workload', methods=['GET'])
-def find_least_workload_node():
-    """
-    Find node with least workload
-    
-    Response:
-    {
-        "success": true,
-        "node": {...}
-    }
-    """
-    try:
-        node = agent.node_tool.find_node_with_least_workload(exclude_masters=True)
-        
-        if node:
-            return jsonify({
-                "success": True,
-                "node": node
-            }), 200
-        else:
-            return jsonify({
-                "success": False,
-                "error": "No suitable worker nodes found"
-            }), 404
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route('/agent/nodes/label', methods=['POST'])
-def label_node():
-    """
-    Label a specific node
-    
-    Request body:
-    {
-        "node_name": "worker-node-1",
-        "label_key": "deployment",
-        "label_value": "telco-app"
-    }
-    
-    Response:
-    {
-        "success": true,
-        "message": "..."
-    }
-    """
-    try:
-        data = request.json
-        
-        if not data:
-            return jsonify({
-                "success": False,
-                "error": "No JSON data provided"
-            }), 400
-        
-        node_name = data.get('node_name')
-        label_key = data.get('label_key')
-        label_value = data.get('label_value')
-        
-        if not all([node_name, label_key, label_value]):
-            return jsonify({
-                "success": False,
-                "error": "Missing required fields: node_name, label_key, label_value"
-            }), 400
-        
-        success, message = agent.node_tool.label_node(node_name, label_key, label_value)
-        
-        return jsonify({
-            "success": success,
-            "message": message
-        }), 200 if success else 500
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
-@app.route('/agent/nodes/check-label', methods=['GET'])
-def check_node_label():
-    """
-    Check if nodes with specified label exist
-    
-    Query params:
-    - label_key: required
-    - label_value: optional
-    
-    Response:
-    {
-        "exists": true,
-        "nodes": [...],
-        "count": 2
-    }
-    """
-    try:
-        label_key = request.args.get('label_key')
-        label_value = request.args.get('label_value')
-        
-        if not label_key:
-            return jsonify({
-                "success": False,
-                "error": "label_key is required"
-            }), 400
-        
-        result = agent.check_node_label_exists(label_key, label_value)
-        
-        return jsonify(result), 200
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
 @app.route('/agent/deploy', methods=['POST'])
 def deploy_app():
     """
-    Generate and deploy telco application to OpenShift with node selection
+    Generate and deploy telco application to OpenShift
     
     Request body:
     {
         "description": "telco messaging application",
         "app_name": "my-telco-app",
-        "namespace": "telco-demo",
-        "node_label_key": "deployment",      // optional
-        "node_label_value": "telco-app"      // optional
+        "namespace": "telco-demo"
     }
     
     Response:
     {
         "success": true,
-        "cluster_overview": "...",
-        "node_selection": {...},
         "generated_code": "...",
         "deployment_result": "...",
         "app_name": "...",
@@ -368,20 +180,14 @@ def deploy_app():
         description = data.get('description', 'telco messaging application')
         app_name = data.get('app_name', 'ai-telco-app')
         namespace = data.get('namespace', 'telco-demo')
-        node_label_key = data.get('node_label_key')
-        node_label_value = data.get('node_label_value')
         
         print(f"[API] Starting deployment: {app_name} in {namespace}")
-        if node_label_key and node_label_value:
-            print(f"[API] Node selector requested: {node_label_key}={node_label_value}")
         
-        # Deploy the application with node selection
+        # Deploy the application
         result = agent.deploy_telco_app(
             description=description,
             app_name=app_name,
-            namespace=namespace,
-            node_label_key=node_label_key,
-            node_label_value=node_label_value
+            namespace=namespace
         )
         
         return jsonify(result), 200
@@ -397,7 +203,7 @@ def deploy_app():
 @app.route('/agent/cluster-info', methods=['GET'])
 def cluster_info():
     """
-    Get current OpenShift cluster information (legacy endpoint)
+    Get current OpenShift cluster information
     
     Query params:
     - namespace (optional): specific namespace to query
@@ -411,7 +217,7 @@ def cluster_info():
     }
     """
     try:
-        from openshift_tools_enhanced import get_current_namespace, OpenShiftClusterTool
+        from openshift_tools import get_current_namespace, OpenShiftClusterTool
         
         namespace = request.args.get('namespace', '') or get_current_namespace()
         cluster_tool = OpenShiftClusterTool()
@@ -456,7 +262,7 @@ def deployment_status(app_name):
     }
     """
     try:
-        from openshift_tools_enhanced import get_current_namespace, OpenShiftClusterTool
+        from openshift_tools import get_current_namespace, OpenShiftClusterTool
         import subprocess
         
         namespace = request.args.get('namespace', '') or get_current_namespace()
@@ -511,16 +317,13 @@ def index():
     """
     return jsonify({
         "name": "Enhanced AI Code Generation Agent API",
-        "version": "3.0.0",
-        "description": "AI-powered code generation with OpenShift cluster awareness, node selection, and intelligent deployment",
+        "version": "2.0.0",
+        "description": "AI-powered code generation with OpenShift cluster awareness and deployment",
         "features": [
             "Code generation from natural language",
             "Code validation and security checks",
-            "Comprehensive cluster overview",
-            "Node workload analysis",
-            "Intelligent node selection",
-            "Automatic node labeling",
-            "Direct deployment to specific nodes",
+            "OpenShift cluster awareness",
+            "Direct deployment to OpenShift",
             "Telco messaging application generation"
         ],
         "endpoints": {
@@ -528,50 +331,37 @@ def index():
             "GET /health": "Health check",
             "POST /agent/execute": "Generate code from prompt",
             "POST /agent/validate": "Validate code quality and security",
-            "GET /agent/cluster-overview": "Get comprehensive cluster overview",
-            "GET /agent/nodes": "Get all nodes information",
-            "GET /agent/nodes/least-workload": "Find node with least workload",
-            "POST /agent/nodes/label": "Label a specific node",
-            "GET /agent/nodes/check-label": "Check if label exists on nodes",
-            "POST /agent/deploy": "Generate and deploy with node selection",
-            "GET /agent/cluster-info": "Get cluster information (legacy)",
+            "POST /agent/deploy": "Generate and deploy application to OpenShift",
+            "GET /agent/cluster-info": "Get cluster information",
             "GET /agent/deployment-status/<app_name>": "Check deployment status"
         },
         "examples": {
-            "cluster_overview": {
-                "method": "GET",
-                "endpoint": "/agent/cluster-overview?namespace=telco-demo",
-                "description": "Get comprehensive overview of cluster before deployment"
+            "generate_code": {
+                "method": "POST",
+                "endpoint": "/agent/execute",
+                "body": {
+                    "query": "Create a Flask API with greeting endpoint"
+                }
             },
-            "check_label": {
-                "method": "GET",
-                "endpoint": "/agent/nodes/check-label?label_key=deployment&label_value=telco-app",
-                "description": "Check if nodes with specific label exist"
+            "validate_code": {
+                "method": "POST",
+                "endpoint": "/agent/validate",
+                "body": {
+                    "code": "from flask import Flask\napp = Flask(__name__)",
+                    "language": "python"
+                }
             },
-            "deploy_with_node_selection": {
+            "deploy_app": {
                 "method": "POST",
                 "endpoint": "/agent/deploy",
                 "body": {
-                    "description": "real-time messaging application",
-                    "app_name": "telco-app",
-                    "namespace": "telco-demo",
-                    "node_label_key": "deployment",
-                    "node_label_value": "telco-app"
-                },
-                "description": "Deploy app to specific node with automatic label creation if needed"
+                    "description": "telco messaging application",
+                    "app_name": "my-telco-app",
+                    "namespace": "telco-demo"
+                }
             }
         },
-        "workflow": [
-            "1. Display cluster overview (nodes, operators, workloads)",
-            "2. Check if requested node label exists",
-            "3. If not, find node with least workload and label it",
-            "4. Generate application code",
-            "5. Deploy to nodes matching the label",
-            "6. Return deployment status and URL"
-        ],
         "cluster_aware": True,
-        "node_selection": True,
-        "auto_labeling": True,
         "status": "ready"
     }), 200
 
@@ -579,12 +369,10 @@ def index():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     print("=" * 60)
-    print("Enhanced AI Code Generation Agent API v3.0")
+    print("Enhanced AI Code Generation Agent API")
     print("=" * 60)
     print(f"Starting server on port {port}")
     print(f"Cluster-aware: Yes")
-    print(f"Node selection: Yes")
-    print(f"Auto-labeling: Yes")
     print(f"Deployment capable: Yes")
     print("=" * 60)
     app.run(host='0.0.0.0', port=port, debug=False)

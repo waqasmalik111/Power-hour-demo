@@ -1,13 +1,9 @@
 {
   "name": "devspaces-agent-extension",
   "displayName": "DevSpaces Agent Commands",
-  "description": "Validate code, generate code, and deploy applications with cluster awareness using your ReAct Agent backend.",
+  "description": "Validate code, generate code, and deploy applications using your ReAct Agent backend.",
   "version": "0.0.3",
   "publisher": "your-org",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-org/agent-orchestrator-openshift"
-  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -15,7 +11,11 @@
     "Other"
   ],
   "main": "extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:agent.validateSelection",
+    "onCommand:agent.generateCode",
+    "onCommand:agent.deployToOpenShift"
+  ],
   "contributes": {
     "configuration": {
       "title": "Agent",
@@ -29,16 +29,6 @@
           "type": "string",
           "default": "python",
           "description": "Default language to send for validation/generation."
-        },
-        "agent.defaultNamespace": {
-          "type": "string",
-          "default": "telco-demo",
-          "description": "Default OpenShift namespace for deployments."
-        },
-        "agent.autoLabelNodes": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically label nodes with least workload when label doesn't exist."
         }
       }
     },
@@ -53,8 +43,7 @@
       },
       {
         "command": "agent.deployToOpenShift",
-        "title": "Agent: Deploy to OpenShift",
-        "icon": "$(rocket)"
+        "title": "Agent: Deploy to OpenShift"
       }
     ],
     "menus": {
@@ -101,8 +90,5 @@
   },
   "dependencies": {
     "node-fetch": "^2.6.9"
-  },
-  "devDependencies": {
-    "@vscode/vsce": "^2.32.0"
   }
 }

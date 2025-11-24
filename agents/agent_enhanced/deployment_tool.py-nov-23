@@ -1,20 +1,20 @@
+
 """
-Enhanced OpenShift Deployment Tool with Node Selection
-Supports deploying to specific nodes using node selectors
+OpenShift Deployment Tool - Deploy generated code using S2I
 """
 import os
 import subprocess
 import tempfile
 import shutil
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class OpenShiftDeploymentTool:
-    """Deploy generated code directly to OpenShift cluster using S2I with node selection"""
+    """Deploy generated code directly to OpenShift cluster using S2I"""
     
     def __init__(self):
         self.name = "deploy_to_openshift"
-        self.description = "Deploy generated code directly to OpenShift cluster with node selection"
+        self.description = "Deploy generated code directly to OpenShift cluster"
         self.temp_dirs = []
     
     def execute(self, 
@@ -22,20 +22,8 @@ class OpenShiftDeploymentTool:
                 app_name: str = "ai-generated-app",
                 namespace: str = "",
                 language: str = "python",
-                requirements: str = "",
-                node_selector: Optional[Dict[str, str]] = None) -> str:
-        """
-        Deploy code to OpenShift using S2I with optional node selector
-        
-        Args:
-            code: Application code to deploy
-            app_name: Name of the application
-            namespace: Target namespace
-            language: Programming language (python, nodejs, etc.)
-            requirements: Package requirements
-            node_selector: Dictionary of node labels for node selection
-                          e.g., {"deployment": "telco-app"}
-        """
+                requirements: str = "") -> str:
+        """Deploy code to OpenShift using S2I"""
         try:
             # Strip markdown code fences
             code = code.strip()
@@ -63,9 +51,7 @@ class OpenShiftDeploymentTool:
             deploy_dir = self._create_deployment_dir(code, app_name, requirements)
             
             # Deploy to OpenShift
-            result = self._deploy_to_openshift(
-                deploy_dir, app_name, namespace, language, node_selector
-            )
+            result = self._deploy_to_openshift(deploy_dir, app_name, namespace, language)
             
             # Cleanup
             self._cleanup(deploy_dir)
@@ -154,14 +140,10 @@ class OpenShiftDeploymentTool:
         return "\n".join(requirements) if requirements else "Flask==3.0.0\ngunicorn==21.2.0"
     
     def _deploy_to_openshift(self, deploy_dir: str, app_name: str, 
-                            namespace: str, language: str,
-                            node_selector: Optional[Dict[str, str]] = None) -> str:
-        """Deploy application to OpenShift using S2I with optional node selector"""
+                            namespace: str, language: str) -> str:
+        """Deploy application to OpenShift using S2I"""
         output = []
         output.append(f"🚀 Deploying {app_name} to namespace: {namespace}\n")
-        
-        if node_selector:
-            output.append(f"🎯 Node Selector: {node_selector}\n")
         
         base_image = "registry.access.redhat.com/ubi9/python-311" if language == "python" else "python:3.11"
         
@@ -199,15 +181,6 @@ class OpenShiftDeploymentTool:
         subprocess.run(["oc", "new-app", app_name, "-n", namespace],
                       capture_output=True, timeout=30)
         
-        # Apply node selector if specified
-        if node_selector:
-            output.append(f"🎯 Applying node selector...\n")
-            success = self._apply_node_selector(app_name, namespace, node_selector)
-            if success:
-                output.append(f"✅ Node selector applied: {node_selector}\n")
-            else:
-                output.append(f"⚠️  Warning: Failed to apply node selector\n")
-        
         # Expose route
         output.append("🌐 Creating route...\n")
         subprocess.run(["oc", "expose", f"service/{app_name}", "-n", namespace],
@@ -232,41 +205,8 @@ class OpenShiftDeploymentTool:
             output.append(f"\n✅ DEPLOYMENT SUCCESSFUL!\n")
             output.append(f"🌍 Application URL: {url}\n")
             output.append(f"📦 Namespace: {namespace}\n")
-            
-            if node_selector:
-                output.append(f"🎯 Deployed to nodes with labels: {node_selector}\n")
         
         return "".join(output)
-    
-    def _apply_node_selector(self, app_name: str, namespace: str, 
-                           node_selector: Dict[str, str]) -> bool:
-        """Apply node selector to deployment"""
-        try:
-            # Create patch JSON for node selector
-            import json
-            patch = {
-                "spec": {
-                    "template": {
-                        "spec": {
-                            "nodeSelector": node_selector
-                        }
-                    }
-                }
-            }
-            
-            # Apply patch
-            result = subprocess.run([
-                "oc", "patch", "deployment", app_name,
-                "-n", namespace,
-                "--type=strategic",
-                "-p", json.dumps(patch)
-            ], capture_output=True, text=True, timeout=30)
-            
-            return result.returncode == 0
-            
-        except Exception as e:
-            print(f"Error applying node selector: {str(e)}")
-            return False
     
     def _cleanup(self, deploy_dir: str):
         """Clean up temporary directory"""
