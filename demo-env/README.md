@@ -1,1 +1,1 @@
-https://catalog.demo.redhat.com/catalog?item=babylon-catalog-prod/sandboxes-gpte.sandbox-open.prod&utm_source=webapp&utm_medium=share-link
+https://catalog.demo.redhat.com/catalog?search=composer&item=babylon-catalog-prod%2Fsandboxes-gpte.ocp4-composer-ai.prod
