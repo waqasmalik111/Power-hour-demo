@@ -788,14 +788,6 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ---
 
-## 📞 Support
-
-- 📧 Email: support@your-company.com
-- 💬 Slack: [#agent-orchestration](https://your-workspace.slack.com)
-- 🐛 Issues: [GitHub Issues](https://github.com/your-org/agent-orchestrator-openshift/issues)
-- 📖 Docs: [https://docs.your-company.com](https://docs.your-company.com)
-
----
 
 <p align="center">
   <strong>Built with ❤️ for Telco Cloud Engineers</strong>
